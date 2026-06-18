@@ -561,6 +561,33 @@ void PrintConfigDef::init_fff_params()
 {
     ConfigOptionDef* def;
 
+    def = this->add("angled_slicing_angle", coFloat);
+    def->label = L("Angled slicing angle");
+    def->category = L("Layers and perimeters");
+    def->tooltip = L("Angle of the slicing plane relative to horizontal, in degrees. "
+                     "0 = standard horizontal layers. Higher values tilt the layer planes "
+                     "to improve part strength along a specific direction. "
+                     "Multiple layers will contact the build plate simultaneously.");
+    def->sidetext = L("°");
+    def->min = 0;
+    def->max = 89;
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionFloat(0.));
+
+    def = this->add("angled_slicing_direction", coFloat);
+    def->label = L("Angled slicing direction");
+    def->category = L("Layers and perimeters");
+    def->tooltip = L("Direction of the slicing plane tilt as a compass bearing, in degrees. "
+                     "0 = layers tilt toward +X (right side of bed), "
+                     "90 = layers tilt toward +Y (back of bed), "
+                     "180 = layers tilt toward -X (left), "
+                     "270 = layers tilt toward -Y (front).");
+    def->sidetext = L("°");
+    def->min = 0;
+    def->max = 360;
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionFloat(0.));
+
     def = this->add("arc_fitting", coEnum);
     def->label = L("Arc fitting");
     def->tooltip = L("Enable to get a G-code file which has G2 and G3 moves. "
