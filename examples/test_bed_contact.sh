@@ -24,7 +24,7 @@ run_test() {
     echo "--- Test: $desc ---"
     
     "$SLICER" --export-gcode \
-        --angled-slicing-angle "$angle" \
+        --angled-slicing-angle "$angle" --skirts 0 \
         --angled-slicing-direction "$direction" \
         --output "$gcode" \
         "$CUBE" 2>/dev/null

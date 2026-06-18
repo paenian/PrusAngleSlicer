@@ -301,3 +301,70 @@ And no angled slicing code paths are executed
 5. **US-5**: Support Material Compatibility
 6. **US-6**: Multi-Material Compatibility
 7. **US-7**: Edge Case & Error Handling
+
+
+---
+
+## US-8: Anchor Line for Angled Slicing
+
+**As a** user printing with angled slicing,  
+**I want** an optional "Anchor Line" printed at the intersection of the first tilted layer and the bed plane,  
+**so that** the first layer has proper bed adhesion without requiring a skirt or brim (which are incompatible with angled slicing).
+
+### Description
+
+When angled slicing is active, the first tilted layer intersects the bed (Z=0) along a line. This line is where material first contacts the build plate. The Anchor Line feature prints a thickened, wider extrusion along this intersection line to provide bed adhesion — similar to how brim works for normal slicing but adapted for the tilted geometry.
+
+### Acceptance Criteria
+
+**Scenario 1: Anchor line generation**
+```
+Given angled slicing is enabled with angle > 0
+And the Anchor Line feature is enabled
+When I slice the model
+Then a thickened extrusion line is generated at Z=0
+And the line follows the intersection of the first tilted plane with the bed (Z=0)
+And the line extends the full length of the model in the direction perpendicular to the tilt
+```
+
+**Scenario 2: Wider extrusion**
+```
+Given the Anchor Line feature is enabled
+When the anchor line is generated
+Then the extrusion width of the anchor line is larger than the normal first layer width
+And the extrusion width is configurable (e.g., 2x or 3x normal width)
+```
+
+**Scenario 3: Anchor line at correct position**
+```
+Given a 20mm cube with angled slicing at 15° direction 0° (tilt toward +X)
+When the anchor line is generated
+Then the anchor line is at Y=[90, 110] (full Y extent of the model)
+And the anchor line X position is at the right edge of the model base (where the first plane touches Z=0)
+And the anchor line Z=0 (flat on the bed)
+```
+
+**Scenario 4: Disabled by default**
+```
+Given angled slicing is enabled
+And the Anchor Line feature is not explicitly enabled
+When I slice the model
+Then no anchor line is generated
+```
+
+**Scenario 5: Incompatible with skirt/brim**
+```
+Given the Anchor Line feature is enabled
+When the user also enables skirt or brim
+Then the slicer shows a warning that skirt/brim are incompatible with angled slicing
+And the anchor line takes precedence
+```
+
+### Priority
+Post-MVP enhancement (requires the base angled slicing to be stable first)
+
+### Notes
+- The anchor line is essentially the intersection of the plane `normal · p = d_min` with the bed plane `z = 0`
+- For direction=0 (tilt toward +X), this is a line parallel to the Y axis at the rightmost X of the base
+- The anchor line could optionally extend slightly beyond the model (like brim does) for better adhesion
+- Future enhancement: multiple anchor lines for the first N planes that touch the bed
