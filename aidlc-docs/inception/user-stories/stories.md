@@ -1,0 +1,303 @@
+# User Stories — Angled Slicing Feature
+
+## Story Overview
+
+| ID | Title | Priority | MVP |
+|----|-------|----------|-----|
+| US-1 | Core Angled Slicing | Critical | Yes |
+| US-2 | Angle Configuration UI | Critical | Yes |
+| US-3 | Preview Visualization | High | Yes |
+| US-4 | Backward Compatibility | Critical | Yes |
+| US-5 | Support Material Compatibility | High | Post-MVP |
+| US-6 | Multi-Material Compatibility | Medium | Post-MVP |
+| US-7 | Edge Case & Error Handling | Medium | Post-MVP |
+
+---
+
+## US-1: Core Angled Slicing
+
+**As a** 3D printing user,  
+**I want to** slice my model with tilted layer planes at a user-specified angle and direction,  
+**so that** the printed part has layer lines oriented for improved strength or aesthetics without modifying the model geometry.
+
+### Acceptance Criteria
+
+**Scenario 1: Basic angled slice**
+```
+Given a model loaded on the build plate
+And the slicing angle is set to 30° with direction 0° (toward +X)
+When I slice the model
+Then the resulting layers are computed as intersections of the mesh with planes tilted 30° from horizontal
+And the layer thickness measured perpendicular to the tilted plane equals the configured layer height
+And the G-code contains only standard G0/G1 moves
+```
+
+**Scenario 2: Multiple first layers**
+```
+Given a model loaded on the build plate
+And the slicing angle is set to 15° with direction 90° (toward +Y)
+When I slice the model
+Then multiple layers intersect the build plate (Z=0)
+And each part of a layer that touches Z=0 is treated with first-layer settings (speed, temperature, bed adhesion) but runs at full speed when the angle takes it away from the bed.
+And there are no layer regions extending below Z=0 because the model is unchanged
+```
+
+**Scenario 3: Geometry preservation**
+```
+Given a model sliced at angle 0° (standard)
+And the same model sliced at angle 20°
+When I compare the outer envelope of both G-code outputs
+Then the printed external geometry is identical within tolerance (±0.1mm)
+And only the layer line orientation differs
+```
+
+**Scenario 4: Standard output format**
+```
+Given any non-zero slicing angle
+When I export G-code
+Then the output file contains only standard G0/G1/G28/M-code commands
+And the file is compatible with any Marlin/Klipper firmware without modification
+```
+
+---
+
+## US-2: Angle Configuration UI
+
+**As a** user configuring print settings,  
+**I want to** specify the slicing angle and tilt direction in the Print Settings panel,  
+**so that** I can control the layer orientation without editing config files manually.
+
+### Acceptance Criteria
+
+**Scenario 1: Angle parameter**
+```
+Given I am in the Print Settings tab
+When I navigate to the Layer height / Angled Slicing section
+Then I see a numeric input for "Slicing Angle" in degrees
+And the valid range is 0° to 89° (0 = standard horizontal slicing)
+And the default value is 0°
+```
+
+**Scenario 2: Direction parameter**
+```
+Given I am in the Angled Slicing section
+When I view the direction control
+Then I see a numeric input for "Tilt Direction" in degrees (0-360° azimuth)
+And 0° means the layers tilt toward the +X axis (right side of bed)
+And 90° means the layers tilt toward the +Y axis (back of bed)
+And a visual indicator shows which direction the layers will lean
+```
+
+**Scenario 3: Config persistence**
+```
+Given I have set slicing angle to 25° and direction to 45°
+When I save the print profile
+And I reload PrusaSlicer
+Then the angle and direction values are restored from the saved profile
+```
+
+**Scenario 4: 3MF project roundtrip**
+```
+Given I have configured angled slicing parameters
+When I save a .3mf project file
+And I open it in a fresh PrusaSlicer instance
+Then the angled slicing parameters are restored correctly
+```
+
+---
+
+## US-3: Preview Visualization
+
+**As a** user who has sliced a model with angled layers,  
+**I want to** see the tilted layer lines in the preview pane,  
+**so that** I can verify the slicing angle is correct and identify issues before printing.
+
+### Acceptance Criteria
+
+**Scenario 1: Layer coloring follows tilt**
+```
+Given a model has been sliced with a 20° angle
+When I view the preview pane
+Then each colored layer band follows the tilted plane orientation
+And layer boundaries are visually diagonal relative to the build plate
+And the layer select goes by angled layer not z-height
+```
+
+**Scenario 2: Layer slider navigation**
+```
+Given angled slicing is active in the preview
+When I move the layer slider
+Then it steps through tilted layers in sequence
+And the highlighted layer shows its tilted cross-section
+```
+
+**Scenario 3: Multiple bed-contact layers visible**
+```
+Given a model sliced at an angle that produces multiple first layers
+When I view the lowest layers in preview
+Then I can see multiple layers touching the build plate
+And first-layer regions are visually distinguished (e.g., different color or highlight)
+```
+
+---
+
+## US-4: Backward Compatibility
+
+**As a** user who sometimes prints with standard horizontal slicing,  
+**I want** angled slicing at 0° to produce identical results to the current PrusaSlicer behavior,  
+**so that** enabling the feature with angle=0 doesn't break my existing workflows.
+
+### Acceptance Criteria
+
+**Scenario 1: Zero angle = standard slicing**
+```
+Given the slicing angle is set to 0°
+When I slice a model
+Then the G-code output is bit-for-bit identical to PrusaSlicer without the angled slicing feature
+And no additional computation time is incurred
+```
+
+**Scenario 2: Legacy project files**
+```
+Given a .3mf project file saved by stock PrusaSlicer (without angled slicing parameters)
+When I open it in this modified PrusaSlicer
+Then the file loads without errors
+And the slicing angle defaults to 0°
+And slicing produces identical results to the stock version
+```
+
+**Scenario 3: No test regressions**
+```
+Given the existing PrusaSlicer unit test suite
+When I run all tests with the angled slicing code present
+Then all tests pass without modification
+```
+
+---
+
+## US-5: Support Material Compatibility
+
+**As a** user printing a model with overhangs at a non-zero slicing angle,  
+**I want** support material to generate correctly relative to the tilted layers,  
+**so that** overhangs are properly supported even when layer orientation changes.
+
+### Acceptance Criteria
+
+**Scenario 1: Overhang detection relative to tilted layers**
+```
+Given a model with a 45° overhang (relative to horizontal)
+And the slicing angle is set to 20°
+When I enable support material with a 45° threshold
+Then supports are generated based on overhang angle relative to the tilted layer plane
+And the effective overhang changes based on the slicing direction
+```
+
+**Scenario 2: Support on build plate**
+```
+Given a model requiring supports with angled slicing active
+When supports are generated
+Then support pillars extend down to Z=0 (the actual build plate)
+And supports are printed with standard horizontal layers (not tilted)
+Or supports follow the same tilted layer scheme as the object (design decision TBD)
+```
+
+**Scenario 3: Brim and skirt at Z=0**
+```
+Given angled slicing is active
+When brim or skirt is enabled
+Then brim/skirt is generated on the Z=0 plane
+And it surrounds the footprint of the tilted object correctly
+```
+
+---
+
+## US-6: Multi-Material Compatibility
+
+**As a** user printing a multi-color model with angled slicing,  
+**I want** color/material boundaries to be preserved correctly in the tilted layers,  
+**so that** my multi-color designs (like chevron patterns on a cat) render accurately.
+
+### Acceptance Criteria
+
+**Scenario 1: Material boundaries preserved**
+```
+Given a multi-color model with painted material regions
+And the slicing angle is set to 15°
+When I slice the model
+Then each tilted layer correctly segments material regions
+And color boundaries align with the original model geometry
+And no material bleeds across boundaries
+```
+
+**Scenario 2: Wipe tower interaction**
+```
+Given a multi-material print with angled slicing
+When tool changes occur
+Then the wipe tower operates at the correct Z height for each layer
+And purge volumes are calculated correctly
+```
+
+**Scenario 3: Multi-color validation model**
+```
+Given the multi-color cat model with chevron patterns
+When sliced at a 10° angle
+Then the chevron pattern boundaries are preserved
+And the result looks correct in preview
+```
+
+---
+
+## US-7: Edge Case & Error Handling
+
+**As a** user who may configure extreme or unusual angled slicing parameters,  
+**I want** the slicer to handle edge cases gracefully,  
+**so that** I don't get crashes, corrupted G-code, or unexpected behavior.
+
+### Acceptance Criteria
+
+**Scenario 1: Extreme angle warning**
+```
+Given the user sets the slicing angle to 80°
+When I attempt to slice
+Then the slicer displays a warning that extreme angles significantly increase print height and time
+And slicing proceeds if the user confirms
+```
+
+**Scenario 2: Tall model + steep angle**
+```
+Given a tall model (200mm) with a 45° slicing angle
+When I slice
+Then the slicer correctly handles the increased effective height (200/cos(45°) ≈ 283mm)
+And warns if the result exceeds the printer's maximum Z height
+```
+
+**Scenario 3: Thin model edge case**
+```
+Given a very thin model (1mm height) with a 30° slicing angle
+When I slice
+Then the slicer produces valid output with at least one complete layer
+And does not crash or produce empty G-code
+```
+
+**Scenario 4: Angle = 0 performance**
+```
+Given the slicing angle is 0°
+When I slice a model
+Then there is zero measurable performance overhead compared to stock PrusaSlicer
+And no angled slicing code paths are executed
+```
+
+---
+
+## Story Priority & Delivery Order
+
+### MVP (Deliver First)
+1. **US-4**: Backward Compatibility — ensures we don't break anything
+2. **US-2**: Angle Configuration UI — user must be able to set the angle
+3. **US-1**: Core Angled Slicing — the fundamental algorithm
+4. **US-3**: Preview Visualization — verify before printing
+
+### Post-MVP (Deliver After)
+5. **US-5**: Support Material Compatibility
+6. **US-6**: Multi-Material Compatibility
+7. **US-7**: Edge Case & Error Handling

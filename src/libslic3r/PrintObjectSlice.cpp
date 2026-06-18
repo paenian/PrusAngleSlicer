@@ -24,6 +24,8 @@
 #include "admesh/stl.h"
 #include "libslic3r/Feature/Interlocking/InterlockingGenerator.hpp"
 #include "libslic3r/Feature/FullSpectrum/VirtualExtruder.hpp"
+#include "libslic3r/Feature/AngledSlicing/AngledSlicingParams.hpp"
+#include "libslic3r/Feature/AngledSlicing/AngledSlicingEngine.hpp"
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Exception.hpp"
@@ -874,6 +876,9 @@ void PrintObject::slice_volumes()
     const Print *print                      = this->print();
     const auto   throw_on_cancel_callback   = std::function<void()>([print](){ print->throw_if_canceled(); });
 
+    // Angled slicing: use tilted-plane slicer if enabled.
+    const auto angled_params = AngledSlicing::Params::from_config(this->config());
+
     // Clear old LayerRegions, allocate for new PrintRegions.
     for (Layer* layer : m_layers) {
         layer->m_regions.clear();
@@ -882,19 +887,97 @@ void PrintObject::slice_volumes()
             layer->m_regions.emplace_back(new LayerRegion(layer, pr.get()));
     }
 
-    std::vector<float>                   slice_zs      = zs_from_layers(m_layers);
-    std::vector<std::vector<ExPolygons>> region_slices = slices_to_regions(this->model_object()->volumes, *m_shared_regions, slice_zs,
-        slice_volumes_inner(
-            print->config(), this->config(), this->trafo_centered(),
-            this->model_object()->volumes, m_shared_regions->layer_ranges, slice_zs, throw_on_cancel_callback),
-        throw_on_cancel_callback);
+    if (angled_params.enabled()) {
+        // TILTED PLANE SLICING: Mesh stays in place, planes are tilted.
+        BOOST_LOG_TRIVIAL(info) << "Angled slicing: using tilted-plane slicer, angle=" 
+                                << angled_params.tilt_angle_deg() << "° direction=" 
+                                << angled_params.tilt_direction_deg() << "°";
 
-    for (size_t region_id = 0; region_id < region_slices.size(); ++ region_id) {
-        std::vector<ExPolygons> &by_layer = region_slices[region_id];
-        for (size_t layer_id = 0; layer_id < by_layer.size(); ++ layer_id)
-            m_layers[layer_id]->regions()[region_id]->m_slices.append(std::move(by_layer[layer_id]), stInternal);
+        // Get the mesh and compute object bounding box from actual stored mesh vertices.
+        const ModelVolumePtrs &volumes = this->model_object()->volumes;
+        Eigen::AlignedBox<double, 3> obj_bbox;
+        for (const ModelVolume *vol : volumes) {
+            if (vol->is_model_part()) {
+                const auto &its = vol->mesh().its;
+                for (const auto &v : its.vertices)
+                    obj_bbox.extend(v.cast<double>());
+            }
+        }
+
+        // Generate tilted planes (in print-position coordinate space)
+        BOOST_LOG_TRIVIAL(info) << "AngledSlicing bbox: min=(" << obj_bbox.min().x() << "," << obj_bbox.min().y() << "," << obj_bbox.min().z()
+                                << ") max=(" << obj_bbox.max().x() << "," << obj_bbox.max().y() << "," << obj_bbox.max().z() << ")";
+        auto planes = AngledSlicing::generate_tilted_planes(
+            angled_params,
+            m_slicing_params.layer_height,
+            m_slicing_params.first_print_layer_height,
+            obj_bbox);
+
+        // Slice each model part with tilted planes
+        for (const ModelVolume *vol : volumes) {
+            if (!vol->is_model_part())
+                continue;
+            
+            // Slice with tilted planes — mesh is in raw model coords (Z=0 at bottom)
+            auto slice_results = AngledSlicing::slice_mesh_tilted(vol->mesh().its, planes);
+
+            // Assign results to layers. We may have more/fewer planes than layers.
+            // Rebuild layers to match the tilted plane count.
+            if (m_layers.size() != slice_results.size()) {
+                // Clear existing layers and create new ones matching the tilted planes
+                this->clear_layers();
+                for (size_t i = 0; i < slice_results.size(); ++i) {
+                    // For angled slicing, clamp print_z to positive for flow computation.
+                    // The G-code Z is computed per-point from the angle formula, not from print_z.
+                    double layer_print_z = std::max(slice_results[i].print_z, 0.1);
+                    if (i > 0 && layer_print_z <= m_layers.back()->print_z)
+                        layer_print_z = m_layers.back()->print_z + 0.01;
+                    double layer_height = (i == 0) ? std::max(layer_print_z, 0.1) : layer_print_z - m_layers.back()->print_z;
+                    layer_height = std::max(layer_height, 0.05);
+                    Layer *layer = this->add_layer(int(i), layer_height, 
+                                                   layer_print_z, 
+                                                   layer_print_z - layer_height * 0.5);
+                    layer->m_regions.reserve(m_shared_regions->all_regions.size());
+                    for (const std::unique_ptr<PrintRegion> &pr : m_shared_regions->all_regions)
+                        layer->m_regions.emplace_back(new LayerRegion(layer, pr.get()));
+                }
+            }
+
+            // Assign contours to the first region of each layer
+            for (size_t i = 0; i < slice_results.size() && i < m_layers.size(); ++i) {
+                if (!slice_results[i].contours.empty()) {
+                    m_layers[i]->regions()[0]->m_slices.append(std::move(slice_results[i].contours), stInternal);
+                }
+            }
+        }
+        
+        BOOST_LOG_TRIVIAL(info) << "Angled slicing: produced " << m_layers.size() << " tilted layers";
+        
+        // Set up layer linking and lslices (required by downstream pipeline)
+        for (size_t i = 0; i < m_layers.size(); ++i) {
+            Layer *layer = m_layers[i];
+            layer->upper_layer = (i + 1 < m_layers.size()) ? m_layers[i + 1] : nullptr;
+            layer->lower_layer = (i > 0) ? m_layers[i - 1] : nullptr;
+            // Populate lslices from region slices (needed for support detection, etc.)
+            layer->make_slices();
+        }
+    } else {
+        // STANDARD SLICING (unchanged)
+        std::vector<float> slice_zs = zs_from_layers(m_layers);
+        std::vector<std::vector<ExPolygons>> region_slices = slices_to_regions(
+            this->model_object()->volumes, *m_shared_regions, slice_zs,
+            slice_volumes_inner(
+                print->config(), this->config(), this->trafo_centered(),
+                this->model_object()->volumes, m_shared_regions->layer_ranges, slice_zs, throw_on_cancel_callback),
+            throw_on_cancel_callback);
+
+        for (size_t region_id = 0; region_id < region_slices.size(); ++region_id) {
+            std::vector<ExPolygons> &by_layer = region_slices[region_id];
+            for (size_t layer_id = 0; layer_id < by_layer.size(); ++layer_id)
+                m_layers[layer_id]->regions()[region_id]->m_slices.append(std::move(by_layer[layer_id]), stInternal);
+        }
+        region_slices.clear();
     }
-    region_slices.clear();
     
     BOOST_LOG_TRIVIAL(debug) << "Slicing volumes - removing top empty layers";
     while (! m_layers.empty()) {

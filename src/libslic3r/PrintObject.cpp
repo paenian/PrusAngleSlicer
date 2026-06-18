@@ -66,6 +66,7 @@
 #include "libslic3r/Point.hpp"
 #include "libslic3r/InfillAboveBridges.hpp"
 #include "Feature/FullSpectrum/VirtualExtruder.hpp"
+#include "Feature/AngledSlicing/AngledSlicingParams.hpp"
 
 using Slic3r::FullSpectrum::VirtualExtruders;
 
@@ -764,6 +765,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "raft_contact_distance"
             || opt_key == "slice_closing_radius"
             || opt_key == "slicing_mode"
+            || opt_key == "angled_slicing_angle"
+            || opt_key == "angled_slicing_direction"
             || opt_key == "interlocking_beam"
             || opt_key == "interlocking_orientation"
             || opt_key == "interlocking_beam_layer_count"

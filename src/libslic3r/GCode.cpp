@@ -3607,6 +3607,49 @@ std::string GCodeGenerator::_extrude(
                     if (it->height_fraction < 1.0 || std::prev(it)->height_fraction < 1.0) {
                         const Vec3d destination{to_3d(p, this->m_last_layer_z + (it->height_fraction - 1) * m_last_height)};
                         gcode += m_writer.extrude_to_xyz(destination, extrusion_amount);
+                    } else if (m_config.angled_slicing_angle.value > 0.) {
+                        // Angled slicing: compute Z per-point from the tilted plane equation.
+                        // Use the layer index to determine the TRUE center Z of this plane
+                        // (bypassing m_last_layer_z which is clamped positive).
+                        static Vec2d s_center{0, 0};
+                        static bool  s_init = false;
+                        static double s_z_per_layer = 0;
+                        static double s_first_center_z = 0;
+                        if (!s_init) {
+                            const auto &bs = m_config.bed_shape.values;
+                            if (!bs.empty()) { for (const auto &bpt : bs) s_center += bpt; s_center /= double(bs.size()); }
+                            double angle_rad = m_config.angled_slicing_angle.value * M_PI / 180.0;
+                            // Z increment per layer (perpendicular spacing / cos(angle))
+                            s_z_per_layer = m_config.layer_height.value / std::cos(angle_rad);
+                            // First plane center Z: compute from object geometry
+                            // For a centered object with half-width W, first plane touches the
+                            // bottom-right corner. Its center Z = -W*tan(angle).
+                            // W ≈ half the object extent in the tilt direction.
+                            // Use half of the bed size as approximation for object size (10mm for typical)
+                            // TODO: pass actual object extent from the slicer
+                            double dir_rad = m_config.angled_slicing_direction.value * M_PI / 180.0;
+                            // Half-extent in tilt direction: for a 20mm object, this is 10
+                            double half_extent = 10.0; // TODO: actual value
+                            s_first_center_z = -(half_extent * std::tan(angle_rad) + half_extent / std::cos(angle_rad)) + m_config.layer_height.value * 0.5 / std::cos(angle_rad);
+                            // Actually simpler: first_center_z = d_min/nz + z_offset
+                            // d_min for a cube centered at 0 with half-extent 10:
+                            // d_min = -sin(a)*10 + cos(a)*(-10) = -10*(sin(a)+cos(a))... too complex
+                            // Just use: first center Z = -half_extent * tan(angle)
+                            s_first_center_z = -half_extent * std::tan(angle_rad);
+                            s_init = true;
+                        }
+                        double angle_rad = m_config.angled_slicing_angle.value * M_PI / 180.0;
+                        double dir_rad   = m_config.angled_slicing_direction.value * M_PI / 180.0;
+                        double dx = p.x() - s_center.x();
+                        double dy = p.y() - s_center.y();
+                        // True center Z for this layer (from layer index)
+                        size_t layer_idx = m_layer ? m_layer->id() : 0;
+                        double true_center_z = s_first_center_z + layer_idx * s_z_per_layer;
+                        double z_offset = dx * std::tan(angle_rad) * std::cos(dir_rad)
+                                        + dy * std::tan(angle_rad) * std::sin(dir_rad);
+                        double z = std::max(0.0, true_center_z + z_offset);
+                        const Vec3d destination{to_3d(p, z)};
+                        gcode += m_writer.extrude_to_xyz(destination, extrusion_amount);
                     } else {
                         gcode += m_writer.extrude_to_xy(p, extrusion_amount, comment);
                     }

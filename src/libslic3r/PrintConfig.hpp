@@ -648,6 +648,8 @@ protected: \
 PRINT_CONFIG_CLASS_DEFINE(
     PrintObjectConfig,
 
+    ((ConfigOptionFloat,               angled_slicing_angle))
+    ((ConfigOptionFloat,               angled_slicing_direction))
     ((ConfigOptionFloat,               brim_separation))
     ((ConfigOptionEnum<BrimType>,      brim_type))
     ((ConfigOptionFloat,               brim_width))

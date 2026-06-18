@@ -1434,6 +1434,10 @@ void TabPrint::build()
         optgroup->append_single_option_line("layer_height", category_path + "layer-height");
         optgroup->append_single_option_line("first_layer_height", category_path + "first-layer-height");
 
+        optgroup = page->new_optgroup(L("Angled slicing"));
+        optgroup->append_single_option_line("angled_slicing_angle");
+        optgroup->append_single_option_line("angled_slicing_direction");
+
         optgroup = page->new_optgroup(L("Vertical shells"));
         optgroup->append_single_option_line("perimeters", category_path + "perimeters");
         optgroup->append_single_option_line("spiral_vase", category_path + "spiral-vase");
