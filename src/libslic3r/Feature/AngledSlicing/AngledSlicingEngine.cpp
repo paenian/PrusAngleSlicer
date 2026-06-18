@@ -123,15 +123,6 @@ std::vector<TiltedSliceResult> slice_mesh_tilted(
 
         Polygons polys;
         std::vector<bool> used(segments.size(), false);
-
-        // Debug: log segment count for first few planes
-        static int plane_count = 0;
-        if (plane_count < 3) {
-            BOOST_LOG_TRIVIAL(info) << "AngledSlicing plane " << plane_count << ": " << segments.size() << " segments, d=" << plane.distance << " pz=" << plane.print_z;
-            for (size_t i = 0; i < segments.size(); ++i)
-                BOOST_LOG_TRIVIAL(info) << "  seg " << i << ": (" << unscaled(segments[i].first.x()) << "," << unscaled(segments[i].first.y()) << ") -> (" << unscaled(segments[i].second.x()) << "," << unscaled(segments[i].second.y()) << ")";
-        }
-        ++plane_count;
         for (size_t start = 0; start < segments.size(); ++start) {
             if (used[start]) continue;
             
@@ -180,7 +171,7 @@ std::vector<TiltedSliceResult> slice_mesh_tilted(
     size_t non_empty = 0;
     for (const auto &r : results)
         if (!r.contours.empty()) ++non_empty;
-    BOOST_LOG_TRIVIAL(info) << "AngledSlicing: " << planes.size() << " planes, " 
+    BOOST_LOG_TRIVIAL(debug) << "AngledSlicing: " << planes.size() << " planes, " 
                             << non_empty << " non-empty, " << (planes.size() - non_empty) << " empty";
 
     // Set heights: vertical distance between consecutive layers
@@ -288,7 +279,7 @@ std::vector<SlicingPlane> generate_tilted_planes(
         ++layer_idx;
     }
 
-    BOOST_LOG_TRIVIAL(info) << "AngledSlicing generate_tilted_planes: d_min=" << d_min << " d_max=" << d_max 
+    BOOST_LOG_TRIVIAL(debug) << "AngledSlicing generate_tilted_planes: d_min=" << d_min << " d_max=" << d_max 
                             << " layer_h=" << layer_height << " planes_generated=" << planes.size()
                             << " first_pz=" << (planes.empty() ? 0.0 : planes.front().print_z)
                             << " last_pz=" << (planes.empty() ? 0.0 : planes.back().print_z);

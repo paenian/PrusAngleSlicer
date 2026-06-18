@@ -100,6 +100,8 @@ src/prusa-slicer
 
 The GUI should open. On first launch it will ask you to configure a printer profile.
 
+**For angled slicing**: Set the angle in Print Settings → Layers and perimeters → "Angled slicing" (Expert mode). Skirt and brim must be disabled (set skirt loops to 0). An anchor line is automatically generated at the bed intersection for adhesion.
+
 ---
 
 ## Step 5 — Run Unit Tests (Optional)

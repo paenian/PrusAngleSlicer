@@ -496,6 +496,17 @@ std::string Print::validate(std::vector<std::string>* warnings) const
             return _u8L("The Spiral Vase option can only be used when printing single material objects.");
     }
 
+    // Angled slicing: skirt and brim are incompatible (they would print in the air).
+    for (const PrintObject *object : m_objects) {
+        if (object->config().angled_slicing_angle.value > 0.) {
+            if (m_config.skirts > 0)
+                return _u8L("Skirt is not compatible with angled slicing. Please set skirt loops to 0.");
+            if (object->config().brim_width.value > 0. && object->config().brim_type.value != btNoBrim)
+                return _u8L("Brim is not compatible with angled slicing. Please disable brim.");
+            break;
+        }
+    }
+
     if (m_config.machine_limits_usage == MachineLimitsUsage::EmitToGCode && m_config.gcode_flavor == gcfKlipper)
         return L("Machine limits cannot be emitted to G-Code when Klipper firmware flavor is used. "
                  "Change the value of machine_limits_usage.");

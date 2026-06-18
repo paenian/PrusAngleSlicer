@@ -953,6 +953,94 @@ void PrintObject::slice_volumes()
         
         BOOST_LOG_TRIVIAL(info) << "Angled slicing: produced " << m_layers.size() << " tilted layers";
         
+        // US-8: Anchor Line — generate a thickened line at Z=0 where the first tilted
+        // plane intersects the bed. This provides bed adhesion for angled prints.
+        // The anchor line is the intersection of plane normal·p = d_min with z=0.
+        // For normal=(-sin(a)*cos(d), -sin(a)*sin(d), cos(a)) and z=0:
+        //   -sin(a)*cos(d)*x - sin(a)*sin(d)*y = d_min
+        // This is a line in XY. We generate it as a thin rectangular ExPolygon.
+        if (!m_layers.empty()) {
+            double angle_rad = angled_params.tilt_angle_rad();
+            double dir_rad = angled_params.tilt_direction_rad();
+            double sin_a = std::sin(angle_rad);
+            double cos_d = std::cos(dir_rad);
+            double sin_d = std::sin(dir_rad);
+            
+            // Find the intersection line of the first plane with z=0 (bed).
+            // In mesh-local coords (centered), the bed is at z = bbox.min().z() = -10 for our cube.
+            // The first plane is at d = d_min (from generate_tilted_planes).
+            // At z = bbox.min().z(): normal · (x, y, z_min) = d_first
+            // → -sin(a)*cos(d)*x - sin(a)*sin(d)*y + cos(a)*z_min = d_first
+            // → -sin(a)*cos(d)*x - sin(a)*sin(d)*y = d_first - cos(a)*z_min
+            // For direction=0: -sin(a)*x = d_first - cos(a)*z_min → x = -(d_first - cos(a)*z_min)/sin(a)
+            
+            // Simpler: the first plane touches the bottom of the object at the "leading edge."
+            // The anchor line is at the Y-extent of the object, at the X position where z=bed.
+            // For a centered object: anchor_x = bbox.max().x() (rightmost edge for dir=0)
+            // The line goes from (anchor_x, bbox.min().y()) to (anchor_x, bbox.max().y())
+            
+            // Compute anchor position: the point where the first tilted plane meets z=z_min (bed bottom)
+            double z_min = obj_bbox.min().z(); // = -10 for centered cube
+            double nx = -sin_a * cos_d;
+            double ny = -sin_a * sin_d;
+            double nz = std::cos(angle_rad);
+            
+            // For the very first plane (d_min): at z=z_min, the plane touches the "leading corner."
+            // The anchor line runs perpendicular to the tilt direction through this corner.
+            // Direction of anchor line: perpendicular to (cos(dir), sin(dir)) = (-sin(dir), cos(dir))
+            
+            // Anchor center point: the corner of the bbox that has the minimum d value
+            // For dir=0: this is (bbox.max().x(), any_y, bbox.min().z()) → x=+10, z=-10
+            double anchor_x = obj_bbox.max().x() * cos_d + obj_bbox.max().y() * sin_d > 
+                              obj_bbox.min().x() * cos_d + obj_bbox.min().y() * sin_d ?
+                              obj_bbox.max().x() : obj_bbox.min().x(); // Simplified for axis-aligned
+            
+            // For general direction, find the point on bbox at z_min that maximizes displacement in tilt direction
+            // tilt_disp = x*cos(dir) + y*sin(dir). Max at corners.
+            double max_disp = std::numeric_limits<double>::lowest();
+            double anchor_center_x = 0, anchor_center_y = 0;
+            for (int i = 0; i < 4; ++i) {
+                double x = (i & 1) ? obj_bbox.max().x() : obj_bbox.min().x();
+                double y = (i & 2) ? obj_bbox.max().y() : obj_bbox.min().y();
+                double disp = x * cos_d + y * sin_d;
+                if (disp > max_disp) {
+                    max_disp = disp;
+                    anchor_center_x = x;
+                    anchor_center_y = y;
+                }
+            }
+            
+            // Anchor line: a rectangle 1mm wide (anchor width) perpendicular to tilt direction
+            // Length: the full extent of the object perpendicular to tilt direction
+            double perp_x = -sin_d; // perpendicular direction
+            double perp_y = cos_d;
+            double half_length = std::max(obj_bbox.sizes().x(), obj_bbox.sizes().y()) * 0.6; // extend a bit
+            double anchor_half_width = 0.5; // 1mm total width
+            
+            // 4 corners of the anchor rectangle
+            Point p1(coord_t(scale_(anchor_center_x + perp_x * half_length - cos_d * anchor_half_width)),
+                     coord_t(scale_(anchor_center_y + perp_y * half_length - sin_d * anchor_half_width)));
+            Point p2(coord_t(scale_(anchor_center_x + perp_x * half_length + cos_d * anchor_half_width)),
+                     coord_t(scale_(anchor_center_y + perp_y * half_length + sin_d * anchor_half_width)));
+            Point p3(coord_t(scale_(anchor_center_x - perp_x * half_length + cos_d * anchor_half_width)),
+                     coord_t(scale_(anchor_center_y - perp_y * half_length + sin_d * anchor_half_width)));
+            Point p4(coord_t(scale_(anchor_center_x - perp_x * half_length - cos_d * anchor_half_width)),
+                     coord_t(scale_(anchor_center_y - perp_y * half_length - sin_d * anchor_half_width)));
+            
+            Polygon anchor_poly;
+            anchor_poly.points = {p1, p2, p3, p4};
+            ExPolygon anchor_expoly(anchor_poly);
+            
+            // Insert as the first layer's geometry (it will be at Z=0 via the G-code formula)
+            if (!m_layers.empty() && !m_layers[0]->regions().empty()) {
+                ExPolygons anchor_expolys;
+                anchor_expolys.push_back(std::move(anchor_expoly));
+                m_layers[0]->regions()[0]->m_slices.append(std::move(anchor_expolys), stBottom);
+                BOOST_LOG_TRIVIAL(info) << "Angled slicing: added anchor line at (" 
+                    << anchor_center_x << "," << anchor_center_y << ") length=" << half_length*2;
+            }
+        }
+        
         // Set up layer linking and lslices (required by downstream pipeline)
         for (size_t i = 0; i < m_layers.size(); ++i) {
             Layer *layer = m_layers[i];

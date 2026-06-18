@@ -352,8 +352,9 @@ GCodeGenerator::ObjectsLayerToPrint GCodeGenerator::collect_layers_to_print(cons
 
         // Check that there are extrusions on the very first layer. The case with empty
         // first layer may result in skirt/brim in the air and maybe other issues.
+        // Skip this check for angled slicing where first layers can be legitimately thin.
         if (layers_to_print.size() == 1u) {
-            if (!has_extrusions)
+            if (!has_extrusions && object.config().angled_slicing_angle.value == 0.)
                 throw Slic3r::SlicingError(_u8L("There is an object with no extrusions in the first layer.") + "\n" +
                                            _u8L("Object name") + ": " + object.model_object()->name);
         }
@@ -3367,7 +3368,22 @@ std::string GCodeGenerator::_extrude(
     }
 
     if (!this->last_position) {
-        const double z = this->m_last_layer_z;
+        double z = this->m_last_layer_z;
+        if (m_config.angled_slicing_angle.value > 0.) {
+            // Compute tilted-plane Z at the first point
+            Vec2d p = this->point_to_gcode(path.front().point);
+            double angle_rad = m_config.angled_slicing_angle.value * M_PI / 180.0;
+            double dir_rad = m_config.angled_slicing_direction.value * M_PI / 180.0;
+            Vec2d sc{0,0};
+            {const auto&bs=m_config.bed_shape.values;if(!bs.empty()){for(const auto&b:bs)sc+=b;sc/=double(bs.size());}}
+            double dx=p.x()-sc.x(), dy=p.y()-sc.y();
+            size_t li = m_layer ? m_layer->id() : 0;
+            double half_ext = 10.0; if(m_layer && m_layer->object()){auto sz=m_layer->object()->size(); double hw=unscaled<double>(sz.x())*0.5, hh=unscaled<double>(sz.y())*0.5; half_ext=hw*std::abs(std::cos(dir_rad))+hh*std::abs(std::sin(dir_rad));}
+            double fcz = -half_ext * std::tan(angle_rad);
+            double zperlayer = m_config.layer_height.value / std::cos(angle_rad);
+            double tcz = fcz + li * zperlayer;
+            z = std::max(0.0, tcz + dx*std::tan(angle_rad)*std::cos(dir_rad) + dy*std::tan(angle_rad)*std::sin(dir_rad));
+        }
         const std::string comment{"move to print after unknown position"};
         gcode += this->retract_and_wipe();
         gcode += m_writer.multiple_extruders ? "" : m_label_objects.maybe_change_instance(m_writer);
@@ -3378,9 +3394,37 @@ std::string GCodeGenerator::_extrude(
         comment += description;
         comment += description_bridge;
         comment += " point";
-        const Vec3crd from{to_3d(*this->last_position, scaled(this->m_last_layer_z))};
-        const Vec3crd to{to_3d(path.front().point, scaled(this->m_last_layer_z + (path.front().height_fraction - 1.0) * path_attr.height))};
-        const std::string travel_gcode{this->travel_to(from, to, path_attr.role, comment, [this](){
+        Vec3crd to_point;
+        Vec3crd from_point;
+        if (m_config.angled_slicing_angle.value > 0.) {
+            Vec2d p = this->point_to_gcode(path.front().point);
+            double angle_rad = m_config.angled_slicing_angle.value * M_PI / 180.0;
+            double dir_rad = m_config.angled_slicing_direction.value * M_PI / 180.0;
+            Vec2d sc2{0,0};
+            {const auto&bs=m_config.bed_shape.values;if(!bs.empty()){for(const auto&b:bs)sc2+=b;sc2/=double(bs.size());}}
+            size_t li = m_layer ? m_layer->id() : 0;
+            double half_ext = 10.0; if(m_layer && m_layer->object()){auto sz=m_layer->object()->size(); double hw=unscaled<double>(sz.x())*0.5, hh=unscaled<double>(sz.y())*0.5; half_ext=hw*std::abs(std::cos(dir_rad))+hh*std::abs(std::sin(dir_rad));}
+            double fcz = -half_ext * std::tan(angle_rad);
+            double zperlayer = m_config.layer_height.value / std::cos(angle_rad);
+            double tcz = fcz + li * zperlayer;
+            // Destination Z
+            double dx=p.x()-sc2.x(), dy=p.y()-sc2.y();
+            double z_to = std::max(0.0, tcz + dx*std::tan(angle_rad)*std::cos(dir_rad) + dy*std::tan(angle_rad)*std::sin(dir_rad));
+            to_point = to_3d(path.front().point, scaled(z_to));
+            // From Z (at current last_position)
+            if (this->last_position) {
+                Vec2d fp = this->point_to_gcode(*this->last_position);
+                double fdx=fp.x()-sc2.x(), fdy=fp.y()-sc2.y();
+                double z_from = std::max(0.0, tcz + fdx*std::tan(angle_rad)*std::cos(dir_rad) + fdy*std::tan(angle_rad)*std::sin(dir_rad));
+                from_point = to_3d(*this->last_position, scaled(z_from));
+            } else {
+                from_point = to_3d(*this->last_position, scaled(this->m_last_layer_z));
+            }
+        } else {
+            to_point = to_3d(path.front().point, scaled(this->m_last_layer_z + (path.front().height_fraction - 1.0) * path_attr.height));
+            from_point = to_3d(*this->last_position, scaled(this->m_last_layer_z));
+        }
+        const std::string travel_gcode{this->travel_to(from_point, to_point, path_attr.role, comment, [this](){
             return m_writer.multiple_extruders ? "" : m_label_objects.maybe_change_instance(m_writer);
         })};
         gcode += travel_gcode;
@@ -3609,42 +3653,30 @@ std::string GCodeGenerator::_extrude(
                         gcode += m_writer.extrude_to_xyz(destination, extrusion_amount);
                     } else if (m_config.angled_slicing_angle.value > 0.) {
                         // Angled slicing: compute Z per-point from the tilted plane equation.
-                        // Use the layer index to determine the TRUE center Z of this plane
-                        // (bypassing m_last_layer_z which is clamped positive).
-                        static Vec2d s_center{0, 0};
-                        static bool  s_init = false;
-                        static double s_z_per_layer = 0;
-                        static double s_first_center_z = 0;
-                        if (!s_init) {
-                            const auto &bs = m_config.bed_shape.values;
-                            if (!bs.empty()) { for (const auto &bpt : bs) s_center += bpt; s_center /= double(bs.size()); }
-                            double angle_rad = m_config.angled_slicing_angle.value * M_PI / 180.0;
-                            // Z increment per layer (perpendicular spacing / cos(angle))
-                            s_z_per_layer = m_config.layer_height.value / std::cos(angle_rad);
-                            // First plane center Z: compute from object geometry
-                            // For a centered object with half-width W, first plane touches the
-                            // bottom-right corner. Its center Z = -W*tan(angle).
-                            // W ≈ half the object extent in the tilt direction.
-                            // Use half of the bed size as approximation for object size (10mm for typical)
-                            // TODO: pass actual object extent from the slicer
-                            double dir_rad = m_config.angled_slicing_direction.value * M_PI / 180.0;
-                            // Half-extent in tilt direction: for a 20mm object, this is 10
-                            double half_extent = 10.0; // TODO: actual value
-                            s_first_center_z = -(half_extent * std::tan(angle_rad) + half_extent / std::cos(angle_rad)) + m_config.layer_height.value * 0.5 / std::cos(angle_rad);
-                            // Actually simpler: first_center_z = d_min/nz + z_offset
-                            // d_min for a cube centered at 0 with half-extent 10:
-                            // d_min = -sin(a)*10 + cos(a)*(-10) = -10*(sin(a)+cos(a))... too complex
-                            // Just use: first center Z = -half_extent * tan(angle)
-                            s_first_center_z = -half_extent * std::tan(angle_rad);
-                            s_init = true;
-                        }
                         double angle_rad = m_config.angled_slicing_angle.value * M_PI / 180.0;
                         double dir_rad   = m_config.angled_slicing_direction.value * M_PI / 180.0;
-                        double dx = p.x() - s_center.x();
-                        double dy = p.y() - s_center.y();
-                        // True center Z for this layer (from layer index)
+                        // Bed center (object center for a centered object)
+                        Vec2d center{0, 0};
+                        {
+                            const auto &bs = m_config.bed_shape.values;
+                            if (!bs.empty()) { for (const auto &bpt : bs) center += bpt; center /= double(bs.size()); }
+                        }
+                        // Half-extent in tilt direction (from object size)
+                        double half_w = 10.0, half_h = 10.0;
+                        if (m_layer && m_layer->object()) {
+                            auto sz = m_layer->object()->size();
+                            half_w = unscaled<double>(sz.x()) * 0.5;
+                            half_h = unscaled<double>(sz.y()) * 0.5;
+                        }
+                        double half_extent = half_w * std::abs(std::cos(dir_rad)) + half_h * std::abs(std::sin(dir_rad));
+                        double z_per_layer = m_config.layer_height.value / std::cos(angle_rad);
+                        double first_center_z = -half_extent * std::tan(angle_rad);
+                        // True center Z for this layer
                         size_t layer_idx = m_layer ? m_layer->id() : 0;
-                        double true_center_z = s_first_center_z + layer_idx * s_z_per_layer;
+                        double true_center_z = first_center_z + layer_idx * z_per_layer;
+                        // Per-point Z offset from tilted plane
+                        double dx = p.x() - center.x();
+                        double dy = p.y() - center.y();
                         double z_offset = dx * std::tan(angle_rad) * std::cos(dir_rad)
                                         + dy * std::tan(angle_rad) * std::sin(dir_rad);
                         double z = std::max(0.0, true_center_z + z_offset);
