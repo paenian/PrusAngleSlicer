@@ -368,3 +368,206 @@ Post-MVP enhancement (requires the base angled slicing to be stable first)
 - For direction=0 (tilt toward +X), this is a line parallel to the Y axis at the rightmost X of the base
 - The anchor line could optionally extend slightly beyond the model (like brim does) for better adhesion
 - Future enhancement: multiple anchor lines for the first N planes that touch the bed
+
+
+---
+
+## US-9: Belt Printer Profile (Infinite Y Axis)
+
+**As a** user with a Cartesian belt printer,  
+**I want** a printer profile that correctly represents my infinite-Y build volume,  
+**so that** I can slice and print parts without false "out of bounds" warnings on the Y axis.
+
+### Description
+
+A Cartesian belt printer has finite X and Z axes but an effectively infinite Y axis (the belt). PrusaSlicer needs a profile that:
+- Defines Y as unbounded (or very large) for object placement
+- Retains normal X and Z limits
+- Supports standard Cartesian G-code (G0/G1 XYZ)
+- Includes appropriate start/end G-code for belt initialization and part ejection
+
+### Acceptance Criteria
+
+**Scenario 1: Large Y objects accepted**
+```
+Given the belt printer profile is active
+And a model is placed with Y extent > 200mm
+When I prepare to slice
+Then no "object out of bounds" warning is shown
+And the model is accepted for slicing
+```
+
+**Scenario 2: X and Z limits enforced**
+```
+Given the belt printer profile is active
+And a model exceeds the X dimension (e.g., 250mm on a 200mm X bed)
+When I prepare to slice
+Then an "object out of bounds" warning is shown for X
+```
+
+**Scenario 3: Normal rectilinear printing**
+```
+Given the belt printer profile is active
+And angled slicing angle = 0
+When I slice a model that fits within X and Z
+Then standard horizontal slicing is used
+And the G-code is compatible with the belt printer firmware
+```
+
+**Scenario 4: Belt advance for part ejection**
+```
+Given the belt printer profile is active
+When a print completes (end G-code runs)
+Then the belt advances to eject the part from the build area
+And the printer is ready for the next print
+```
+
+### Priority
+Post-MVP (requires belt printer hardware for testing)
+
+---
+
+## US-10: Bigger-Than-Bed Printing via Angled Slicing
+
+**As a** user with a belt printer,  
+**I want** to print parts that are longer than my X or Z build volume,  
+**so that** I can produce large parts on a compact machine by tilting the slicing direction along the belt axis.
+
+### Description
+
+When a part exceeds the X or Z dimensions of the build volume, the slicer can automatically compute a tilt angle that maps the excess dimension onto the infinite Y axis. The part is printed diagonally — each tilted layer fits within X and Z, and the belt carries the part forward as it grows in Y.
+
+### Acceptance Criteria
+
+**Scenario 1: Auto-angle for oversized X**
+```
+Given a part is 300mm in X on a printer with 200mm X build volume
+And the belt axis is Y (infinite)
+When I enable "auto-fit angle" mode
+Then the slicer computes the minimum angle to fit: arctan(300/200) ≈ 56°
+And the angled slicing direction is set to 0° (tilt toward X, extending into Y)
+And the part slices successfully within the build volume
+```
+
+**Scenario 2: Auto-angle for oversized Z**
+```
+Given a part is 400mm in Z on a printer with 200mm Z build volume
+And the belt axis is Y
+When I enable "auto-fit angle" mode  
+Then the slicer computes the minimum angle to fit the Z extent
+And the part is tilted so its height extends into the Y direction
+```
+
+**Scenario 3: Part fits without tilting**
+```
+Given a part fits within X and Z limits
+When auto-fit angle mode is enabled
+Then the angle remains 0° (no unnecessary tilting)
+And standard horizontal slicing is used
+```
+
+**Scenario 4: Manual override**
+```
+Given the auto-fit angle suggests 45°
+When the user manually sets a different angle
+Then the manual angle is used
+And a warning is shown if the part exceeds build volume at that angle
+```
+
+### Priority
+Post-MVP enhancement
+
+---
+
+## US-11: Sequential Belt Printing (Continuous Production)
+
+**As a** user operating a belt printer for production,  
+**I want** to queue multiple parts for sequential printing with automatic belt advance between each,  
+**so that** I can run continuous unattended production without manual intervention.
+
+### Description
+
+After each part finishes, the belt advances to eject the completed part, then the next part begins printing. This enables continuous production where parts roll off the belt one after another.
+
+### Acceptance Criteria
+
+**Scenario 1: Multi-part sequential print**
+```
+Given 5 copies of a model are queued for printing
+And the belt printer profile is active
+When I start the print
+Then each copy is printed sequentially
+And after each copy completes, the belt advances to eject it
+And the next copy begins printing at Y=0 (reset position)
+```
+
+**Scenario 2: Belt advance G-code between parts**
+```
+Given a part has completed printing
+When the between-objects sequence runs
+Then G-code advances the belt by at least (part_Y_extent + clearance)
+And the extruder moves to a safe position before belt advance
+And the bed is clear for the next part
+```
+
+**Scenario 3: Mixed part queue**
+```
+Given different models are queued (e.g., 3x widget_A + 2x widget_B)
+When printing sequentially
+Then each model is sliced and printed independently
+And belt advance distance matches each part's Y extent
+```
+
+**Scenario 4: Continuous operation with angled slicing**
+```
+Given angled slicing is enabled for oversized parts
+And sequential belt printing is active
+When each oversized part completes
+Then the belt advances by the tilted part's Y footprint
+And the next part starts fresh at Y=0
+```
+
+### Priority
+Future enhancement (requires sequential print + belt integration)
+
+---
+
+## US-12: Belt Printer Part Ejection
+
+**As a** user with a belt printer,  
+**I want** reliable part ejection after each print completes,  
+**so that** the build area is cleared and ready for the next print without manual intervention.
+
+### Acceptance Criteria
+
+**Scenario 1: Single part ejection**
+```
+Given a single part has finished printing
+When the end G-code executes
+Then the nozzle retracts and moves to a safe Z height
+And the belt advances forward until the part falls off the end
+And a configurable pause allows the part to cool/detach
+```
+
+**Scenario 2: Ejection distance calculation**
+```
+Given a part occupies Y range [0, 150mm] on the belt
+When ejection is triggered
+Then the belt advances at least 150mm + ejection_clearance (configurable, default 20mm)
+And the advance speed is configurable (default: slower than print speed)
+```
+
+**Scenario 3: Ejection G-code**
+```
+Given the belt printer profile is configured
+When ejection occurs
+Then the G-code sequence is:
+  1. Retract filament
+  2. Lift Z to clearance height
+  3. G1 Y{part_length + clearance} F{belt_speed} ; advance belt
+  4. G92 Y0 ; reset Y origin for next part
+  5. Optional: pause for cooling
+```
+
+### Priority
+Post-MVP (part of belt printer profile)
