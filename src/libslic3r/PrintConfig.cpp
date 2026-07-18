@@ -588,6 +588,15 @@ void PrintConfigDef::init_fff_params()
     def->mode = comExpert;
     def->set_default_value(new ConfigOptionFloat(0.));
 
+    def = this->add("angled_slicing_anchor_line", coBool);
+    def->label = L("Angled slicing anchor line");
+    def->category = L("Layers and perimeters");
+    def->tooltip = L("When enabled, generates a thickened extrusion line at Z=0 where the first "
+                     "tilted layer intersects the bed. This provides bed adhesion for angled prints "
+                     "since skirt and brim are not compatible with angled slicing.");
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionBool(true));
+
     def = this->add("arc_fitting", coEnum);
     def->label = L("Arc fitting");
     def->tooltip = L("Enable to get a G-code file which has G2 and G3 moves. "

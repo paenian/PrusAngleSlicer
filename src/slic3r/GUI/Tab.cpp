@@ -1437,6 +1437,7 @@ void TabPrint::build()
         optgroup = page->new_optgroup(L("Angled slicing"));
         optgroup->append_single_option_line("angled_slicing_angle");
         optgroup->append_single_option_line("angled_slicing_direction");
+        optgroup->append_single_option_line("angled_slicing_anchor_line");
 
         optgroup = page->new_optgroup(L("Vertical shells"));
         optgroup->append_single_option_line("perimeters", category_path + "perimeters");

@@ -956,10 +956,8 @@ void PrintObject::slice_volumes()
         // US-8: Anchor Line — generate a thickened line at Z=0 where the first tilted
         // plane intersects the bed. This provides bed adhesion for angled prints.
         // The anchor line is the intersection of plane normal·p = d_min with z=0.
-        // For normal=(-sin(a)*cos(d), -sin(a)*sin(d), cos(a)) and z=0:
-        //   -sin(a)*cos(d)*x - sin(a)*sin(d)*y = d_min
-        // This is a line in XY. We generate it as a thin rectangular ExPolygon.
-        if (!m_layers.empty()) {
+        // Gated by angled_slicing_anchor_line config option.
+        if (!m_layers.empty() && this->config().angled_slicing_anchor_line.value) {
             double angle_rad = angled_params.tilt_angle_rad();
             double dir_rad = angled_params.tilt_direction_rad();
             double sin_a = std::sin(angle_rad);

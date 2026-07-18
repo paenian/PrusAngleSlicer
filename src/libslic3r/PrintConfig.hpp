@@ -650,6 +650,7 @@ PRINT_CONFIG_CLASS_DEFINE(
 
     ((ConfigOptionFloat,               angled_slicing_angle))
     ((ConfigOptionFloat,               angled_slicing_direction))
+    ((ConfigOptionBool,                angled_slicing_anchor_line))
     ((ConfigOptionFloat,               brim_separation))
     ((ConfigOptionEnum<BrimType>,      brim_type))
     ((ConfigOptionFloat,               brim_width))

@@ -91,12 +91,6 @@ set(SLIC3R_SOURCES
     ExtrusionSimulator.cpp
     ExtrusionSimulator.hpp
     Feature/AngledSlicing/AngledSlicingParams.hpp
-    Feature/AngledSlicing/AngledSlicingTransform.hpp
-    Feature/AngledSlicing/AngledSlicingTransform.cpp
-    Feature/AngledSlicing/AngledSlicingZSchedule.hpp
-    Feature/AngledSlicing/AngledSlicingZSchedule.cpp
-    Feature/AngledSlicing/AngledSlicingFirstLayer.hpp
-    Feature/AngledSlicing/AngledSlicingFirstLayer.cpp
     Feature/AngledSlicing/AngledSlicingEngine.hpp
     Feature/AngledSlicing/AngledSlicingEngine.cpp
     Feature/Interlocking/InterlockingGenerator.cpp
