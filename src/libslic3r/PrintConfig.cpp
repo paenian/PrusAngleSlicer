@@ -597,6 +597,15 @@ void PrintConfigDef::init_fff_params()
     def->mode = comExpert;
     def->set_default_value(new ConfigOptionBool(true));
 
+    def = this->add("angled_slicing_anchor_every_layer", coBool);
+    def->label = L("Anchor line on every bed-touching layer");
+    def->category = L("Layers and perimeters");
+    def->tooltip = L("When enabled, adds an anchor line on every layer that touches the bed, "
+                     "not just the first. This significantly improves adhesion for angled prints "
+                     "by anchoring each new bed-contact region as it appears.");
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionBool(true));
+
     def = this->add("arc_fitting", coEnum);
     def->label = L("Arc fitting");
     def->tooltip = L("Enable to get a G-code file which has G2 and G3 moves. "

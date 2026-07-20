@@ -469,7 +469,7 @@ std::string Preset::trim_vendor_repo_prefix(const std::string& id, const VendorP
 }
 
 static std::vector<std::string> s_Preset_print_options {
-    "layer_height", "first_layer_height", "angled_slicing_angle", "angled_slicing_direction", "angled_slicing_anchor_line",
+    "layer_height", "first_layer_height", "angled_slicing_angle", "angled_slicing_direction", "angled_slicing_anchor_line", "angled_slicing_anchor_every_layer",
     "perimeters", "spiral_vase", "slice_closing_radius", "slicing_mode",
     "top_solid_layers", "top_solid_min_thickness", "bottom_solid_layers", "bottom_solid_min_thickness",
     "ensure_vertical_shell_thickness", "extra_perimeters", "extra_perimeters_on_overhangs",
