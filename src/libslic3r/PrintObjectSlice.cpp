@@ -975,7 +975,10 @@ void PrintObject::slice_volumes()
             double perp_x = -sin_d;
             double perp_y = cos_d;
             double half_length = std::max(obj_bbox.sizes().x(), obj_bbox.sizes().y()) * 0.6;
-            double anchor_half_width = 0.4; // 0.8mm total width per anchor line
+            // Anchor width: use the configured multiplier applied to the anchor_spacing
+            // A wider anchor provides better bed adhesion for the thin bed-touching layers
+            double width_multiplier = this->config().angled_slicing_anchor_width.value;
+            double anchor_half_width = 0.4 * width_multiplier; // base 0.8mm * multiplier
             
             // Determine which layers touch the bed.
             // A layer touches the bed if any point on its tilted plane has Z <= 0.
