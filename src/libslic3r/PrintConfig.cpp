@@ -606,6 +606,18 @@ void PrintConfigDef::init_fff_params()
     def->mode = comExpert;
     def->set_default_value(new ConfigOptionBool(true));
 
+    def = this->add("angled_slicing_anchor_width", coFloat);
+    def->label = L("Anchor line width multiplier");
+    def->category = L("Layers and perimeters");
+    def->tooltip = L("Multiplier for the extrusion width of anchor lines on bed-touching layers. "
+                     "Higher values produce wider, flatter anchor lines for better bed adhesion. "
+                     "1.0 = normal extrusion width, 2.0 = double width, 3.0 = triple width.");
+    def->sidetext = L("x");
+    def->min = 1.0;
+    def->max = 5.0;
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionFloat(2.5));
+
     def = this->add("arc_fitting", coEnum);
     def->label = L("Arc fitting");
     def->tooltip = L("Enable to get a G-code file which has G2 and G3 moves. "
