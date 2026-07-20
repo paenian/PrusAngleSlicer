@@ -1019,15 +1019,28 @@ void PrintObject::slice_volumes()
                 double min_disp = obj_bbox.min().x() * cos_d + obj_bbox.min().y() * sin_d;
                 if (disp < min_disp) break; // Past the object
                 
-                // Generate anchor rectangle perpendicular to tilt direction
-                Point p1(coord_t(scale_(ax + perp_x * half_length - cos_d * anchor_half_width)),
-                         coord_t(scale_(ay + perp_y * half_length - sin_d * anchor_half_width)));
-                Point p2(coord_t(scale_(ax + perp_x * half_length + cos_d * anchor_half_width)),
-                         coord_t(scale_(ay + perp_y * half_length + sin_d * anchor_half_width)));
-                Point p3(coord_t(scale_(ax - perp_x * half_length + cos_d * anchor_half_width)),
-                         coord_t(scale_(ay - perp_y * half_length + sin_d * anchor_half_width)));
-                Point p4(coord_t(scale_(ax - perp_x * half_length - cos_d * anchor_half_width)),
-                         coord_t(scale_(ay - perp_y * half_length - sin_d * anchor_half_width)));
+                // Generate anchor rectangle perpendicular to tilt direction.
+                // IMPORTANT: extend the anchor INWARD (toward object center) so it overlaps
+                // with the tilted layer above. The anchor extends from the bed-intersection
+                // position inward by anchor_spacing + overlap, ensuring continuity.
+                double inward_extent = anchor_spacing + 0.5; // Overlap into the next layer's zone
+                
+                // Anchor rectangle: from (ax, ay) extending inward by inward_extent,
+                // and perpendicular by half_length on each side.
+                // The "outward" edge is at the bed intersection, the "inward" edge overlaps the layer.
+                double outer_x = ax + cos_d * anchor_half_width;  // slight outward extension
+                double outer_y = ay + sin_d * anchor_half_width;
+                double inner_x = ax - cos_d * inward_extent;      // extend inward toward center
+                double inner_y = ay - sin_d * inward_extent;
+                
+                Point p1(coord_t(scale_(outer_x + perp_x * half_length)),
+                         coord_t(scale_(outer_y + perp_y * half_length)));
+                Point p2(coord_t(scale_(inner_x + perp_x * half_length)),
+                         coord_t(scale_(inner_y + perp_y * half_length)));
+                Point p3(coord_t(scale_(inner_x - perp_x * half_length)),
+                         coord_t(scale_(inner_y - perp_y * half_length)));
+                Point p4(coord_t(scale_(outer_x - perp_x * half_length)),
+                         coord_t(scale_(outer_y - perp_y * half_length)));
                 
                 Polygon anchor_poly;
                 anchor_poly.points = {p1, p2, p3, p4};
