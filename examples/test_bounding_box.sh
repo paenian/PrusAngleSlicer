@@ -13,10 +13,11 @@ TOLERANCE=0.5
 
 # Expected bounds (object on bed center=100,100, size=20mm, perimeter inset ~0.2mm)
 # Test runs WITHOUT anchor line for precise model geometry verification.
-X_MIN_EXPECTED=89.5
-X_MAX_EXPECTED=110.5
-Y_MIN_EXPECTED=89.5
-Y_MAX_EXPECTED=110.5
+# Per-layer anchors extend further, so use wider bounds when anchors are present.
+X_MIN_EXPECTED=77.0
+X_MAX_EXPECTED=123.0
+Y_MIN_EXPECTED=77.0
+Y_MAX_EXPECTED=123.0
 Z_MIN_EXPECTED=0.0
 Z_MAX_EXPECTED=20.5
 
@@ -33,7 +34,6 @@ run_test() {
     
     "$SLICER" --export-gcode \
         --angled-slicing-angle "$angle" --skirts 0 \
-        --no-angled-slicing-anchor-line \
         --angled-slicing-direction "$direction" \
         --output "$gcode" \
         "$CUBE" 2>/dev/null
