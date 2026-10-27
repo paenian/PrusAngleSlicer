@@ -102,3 +102,20 @@ Personas: P1 Nadia (novice), P2 Ian (intermediate), P3 Priya (advanced), P4 Marc
 | US-7 | FR-6, NFR-2, NFR-3 | P1, P2, P3, P4 |
 
 **Note on validation (per success criteria Q10)**: US-3 + US-7 together are the acceptance spine — a valid manufacturer file on success, a safe `.sl1` fallback with warning otherwise.
+
+
+---
+
+## Epic F — Novice onboarding (added after first end-to-end pass)
+
+### US-13 — Add a non-Prusa SLA printer from the wizard, ready to print
+**As** Nadia (novice), **I want** to pick a non-Prusa SLA printer (e.g. Phrozen Sonic Mega 8K S) from the "Add printer" wizard and have everything set up automatically, **so that** I can slice and export to my printer's format without manual configuration.
+- **Personas**: P1, P2
+- **Traces**: FR-1, FR-2, FR-3, FR-5 (+ US-1, US-3)
+- **Acceptance criteria**:
+  - **Given** the Config Wizard / Add-printer flow, **when** I browse SLA printers, **then** Phrozen (and Elegoo) 3rd-party SLA printers appear with a picture and are selectable (vendor `repo_id = non-prusa-sla`, bundled `.ini` + `.idx` + model `*_thumbnail.png`).
+  - **Given** I select the Phrozen Sonic Mega 8K S, **when** it is added, **then** the app activates the SLA workflow automatically (printer_technology = SLA) and the UVtools target format is pre-configured (`sla_archive_format = uvtools:ChituboxFile@4`).
+  - **Given** the printer is selected, **when** I look at materials, **then** an "Anycubic ABS-Like Grey Resin" SLA material is installed and set as the printer's default.
+  - **Given** I slice a model and export, **when** UVtools is available, **then** a valid CTB file is produced with the correct 8K specs (7680×4320, 330×185×300) — verified end-to-end; on failure, the `.sl1` fallback applies (US-7).
+
+**Status**: Data + wiring implemented (PhrozenSLA.ini/.idx + thumbnails, ElegooSLA.ini/.idx + thumbnails; Anycubic ABS-like grey resin default material). Conversion verified end-to-end for the Mega 8K S (slice -> .sl1 -> CTB v4, correct specs, re-opens in UVtools). Config Wizard appearance requires no C++ change (confirmed via context analysis of ConfigWizard BundleMap::load + repo_id gate). Rendered-wizard appearance to be confirmed on a GUI session per ui-verification-checklist.md.
