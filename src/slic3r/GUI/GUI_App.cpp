@@ -10,6 +10,7 @@
 #include "GUI_App.hpp"
 #include "GUI_Init.hpp" // IWYU pragma: keep
 #include "GUI_ObjectList.hpp"
+#include "UVToolsIntegration.hpp"
 #include "GUI_ObjectManipulation.hpp"
 #include "GUI_Factories.hpp"
 #include "TopBar.hpp"
@@ -960,6 +961,11 @@ void GUI_App::init_app_config()
             }
         }
     }
+
+    // 3rd-party SLA printer support: wire the UVtools convert writer to the GUI
+    // boundary (paths from AppConfig, Http-backed download, warning routing).
+    if (is_editor())
+        init_uvtools_integration();
 }
 
 namespace {
