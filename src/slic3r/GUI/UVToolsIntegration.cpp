@@ -17,34 +17,59 @@
 
 namespace Slic3r { namespace GUI {
 
-// --- Pinned UVtools release (U1 data). Update version+sha256 together. ---
-// NOTE: placeholder checksums; the exact pinned version + per-arch SHA-256 are
-// finalized during Build & Test against the chosen UVtools release. Until a
-// real checksum is provided, auto-download verification will (correctly) fail
-// closed and the writer falls back to .sl1 with a warning.
+// --- Pinned UVtools release (U1 data). Update version + all SHA-256 together. ---
+// Pinned against UVtools v7.1.2 release assets (verified by downloading each
+// artifact and computing its SHA-256). The downloaded archive is verified
+// against these before it is ever extracted or executed (SECURITY-13).
 namespace {
-constexpr const char *UVTOOLS_PINNED_VERSION = "5.1.6";
+constexpr const char *UVTOOLS_PINNED_VERSION = "7.1.2";
+
+// SHA-256 of each official UVtools_<os>-<arch>_v7.1.2.zip release asset.
+// (Only the current platform's constant is referenced per build; the rest are
+//  intentionally retained for the other build targets.)
+[[maybe_unused]] constexpr const char *SHA_OSX_ARM64   = "0fe329344102ab0326c143ea9200ec6f0fdb9708e747c178bc34b6e46cc0961f";
+[[maybe_unused]] constexpr const char *SHA_OSX_X64     = "ffb14e9055d85b80c2c8556b6573d5560d911257f2eddc61d688dc7b9bedebc6";
+[[maybe_unused]] constexpr const char *SHA_WIN_X64     = "8ed807737242738c8772c966f8bd302a214764e439e1e24893fbf9b65a542f41";
+[[maybe_unused]] constexpr const char *SHA_WIN_ARM64   = "dcbbb9c0032c71bb39e60683dea5acee6ba10a4c5ceff18c00f2d005351e14a5";
+[[maybe_unused]] constexpr const char *SHA_LINUX_X64   = "4d06ec7e86043c409d81126311c5c8e6f4629eb5bb9d3f092d8ec2401d157c1c";
+[[maybe_unused]] constexpr const char *SHA_LINUX_ARM64 = "6cdd0b70bd4495c3cd974096bacdac5c57f2801a781f6cd43237a6355edf1b5a";
+
+std::string release_url(const char *os_arch)
+{
+    return std::string("https://github.com/sn4k3/UVtools/releases/download/v")
+         + UVTOOLS_PINNED_VERSION + "/UVtools_" + os_arch + "_v"
+         + UVTOOLS_PINNED_VERSION + ".zip";
+}
 
 uvtools::UVToolsRelease pinned_release_for_current_arch()
 {
     uvtools::UVToolsRelease rel;
     rel.version = UVTOOLS_PINNED_VERSION;
-#if defined(__APPLE__)
-    #if defined(__aarch64__)
-        const char *arch = "arm64";
-        rel.sha256 = ""; // TODO: pin arm64 checksum
+
+#if defined(_WIN32)
+    // Windows: zip root contains UVtoolsCmd.exe.
+    rel.entry_relpath = "UVtoolsCmd.exe";
+    #if defined(_M_ARM64) || defined(__aarch64__)
+        rel.url = release_url("win-arm64");  rel.sha256 = SHA_WIN_ARM64;
     #else
-        const char *arch = "x64";
-        rel.sha256 = ""; // TODO: pin x64 checksum
+        rel.url = release_url("win-x64");    rel.sha256 = SHA_WIN_X64;
     #endif
-    rel.url = std::string("https://github.com/sn4k3/UVtools/releases/download/v")
-            + UVTOOLS_PINNED_VERSION + "/UVtools_osx-" + arch + "_v"
-            + UVTOOLS_PINNED_VERSION + ".zip";
+#elif defined(__APPLE__)
+    // macOS: zip contains UVtools.app bundle.
+    rel.entry_relpath = "UVtools.app/Contents/MacOS/UVtoolsCmd";
+    #if defined(__aarch64__)
+        rel.url = release_url("osx-arm64");  rel.sha256 = SHA_OSX_ARM64;
+    #else
+        rel.url = release_url("osx-x64");    rel.sha256 = SHA_OSX_X64;
+    #endif
 #else
-    // Non-macOS: left unset this pass (macOS-first per CON-3). Service will
-    // report ToolMissing -> fallback to .sl1.
-    rel.url = "";
-    rel.sha256 = "";
+    // Linux: zip root contains UVtoolsCmd.
+    rel.entry_relpath = "UVtoolsCmd";
+    #if defined(__aarch64__)
+        rel.url = release_url("linux-arm64"); rel.sha256 = SHA_LINUX_ARM64;
+    #else
+        rel.url = release_url("linux-x64");   rel.sha256 = SHA_LINUX_X64;
+    #endif
 #endif
     return rel;
 }
@@ -69,7 +94,7 @@ bool download_file(const std::string &url, const std::string &dest,
     bool ok = false;
     std::string body;
     Http::get(url)
-        .size_limit(0) // default large limit; UVtools zips are tens of MB
+        .size_limit(512 * 1024 * 1024) // UVtools release zips are tens of MB; allow up to 512 MB
         .on_progress([&progress](Http::Progress p, bool &cancel) {
             if (progress && p.dltotal > 0) {
                 double frac = double(p.dlnow) / double(p.dltotal);

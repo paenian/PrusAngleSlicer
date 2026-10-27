@@ -221,6 +221,26 @@ static void append_bool_option( std::shared_ptr<ConfigOptionsGroup> optgroup,
 	wxGetApp().searcher().add_key(opt_key, Preset::TYPE_PREFERENCES, optgroup->config_category(), L("Preferences"));
 }
 
+static void append_string_option( std::shared_ptr<ConfigOptionsGroup> optgroup,
+								const std::string& opt_key,
+								const std::string& label,
+								const std::string& tooltip,
+								const std::string& def_val,
+								ConfigOptionMode mode = comSimple)
+{
+	ConfigOptionDef def = {opt_key, coString};
+	def.label = label;
+	def.tooltip = tooltip;
+	def.mode = mode;
+	def.width = 30;
+	def.set_default_value(new ConfigOptionString{ def_val });
+	Option option(def, opt_key);
+	optgroup->append_single_option_line(option);
+
+	// fill data to the Search Dialog
+	wxGetApp().searcher().add_key(opt_key, Preset::TYPE_PREFERENCES, optgroup->config_category(), L("Preferences"));
+}
+
 template<typename EnumType>
 static void append_enum_option( std::shared_ptr<ConfigOptionsGroup> optgroup,
 								const std::string& opt_key,
@@ -605,12 +625,15 @@ void PreferencesDialog::build()
 		m_optgroup_other = create_options_tab(_L("Other"), tabs);
 		m_optgroup_other->on_change = [this](t_config_option_key opt_key, boost::any value) {
 
-			if (auto it = m_values.find(opt_key); it != m_values.end() && opt_key != "url_downloader_dest") {
+			if (auto it = m_values.find(opt_key); it != m_values.end() &&
+			    opt_key != "url_downloader_dest" && opt_key != "uvtools_executable_path") {
 				m_values.erase(it); // we shouldn't change value, if some of those parameters were selected, and then deselected
 				return;
 			}
 
-			if (opt_key == "suppress_hyperlinks")
+			if (opt_key == "uvtools_executable_path")
+				m_values[opt_key] = boost::any_cast<std::string>(value);
+			else if (opt_key == "suppress_hyperlinks")
 				m_values[opt_key] = boost::any_cast<bool>(value) ? "1" : "";
 			else
 				m_values[opt_key] = boost::any_cast<bool>(value) ? "1" : "0";
@@ -643,6 +666,17 @@ void PreferencesDialog::build()
 			L("Allow downloads from supported websites (e.g. Printables.com)"),
 			L("If enabled, PrusaSlicer can download and open files from supported websites"),
 			app_config->get_bool("downloader_url_registered"));
+
+		// 3rd-party SLA printer support: optional override path to the UVtools CLI
+		// (UVtoolsCmd). Leave empty to let PrusaSlicer download UVtools automatically
+		// when a 3rd-party SLA printer profile is exported.
+		append_string_option(m_optgroup_other, "uvtools_executable_path",
+			L("UVtools executable path (SLA conversion)"),
+			L("Optional path to the UVtools command-line executable (UVtoolsCmd) used to "
+			  "convert SLA output into 3rd-party printer formats. Leave empty to download "
+			  "UVtools automatically on first use. UVtools is licensed AGPL-3.0 and is run "
+			  "as a separate program."),
+			app_config->has("uvtools_executable_path") ? app_config->get("uvtools_executable_path") : std::string());
 
 		activate_options_tab(m_optgroup_other);
 

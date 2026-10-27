@@ -46,10 +46,15 @@ using PersistPathFn = std::function<void(const std::string &resolved_path)>;
 
 // Pinned UVtools release descriptor for the current platform/arch (from U1 data).
 struct UVToolsRelease {
-    std::string version;      // e.g. "5.0.0"
-    std::string url;          // full download URL for this arch
+    std::string version;      // e.g. "7.1.2"
+    std::string url;          // full download URL for this OS/arch
     std::string sha256;       // expected SHA-256 (lowercase hex) of the downloaded archive
-    bool valid() const { return !version.empty() && !url.empty() && !sha256.empty(); }
+    // Relative path of the UVtoolsCmd entry inside the extracted archive, e.g.
+    //   macOS:   "UVtools.app/Contents/MacOS/UVtoolsCmd"
+    //   Windows: "UVtoolsCmd.exe"
+    //   Linux:   "UVtoolsCmd"
+    std::string entry_relpath;
+    bool valid() const { return !version.empty() && !url.empty() && !sha256.empty() && !entry_relpath.empty(); }
 };
 
 class UVToolsService {

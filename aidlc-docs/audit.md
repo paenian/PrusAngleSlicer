@@ -167,3 +167,11 @@ Timestamps use ISO 8601 (UTC).
 **Context**: CONSTRUCTION - all units + Build&Test first pass complete; feature builds and runs end-to-end with safe fallback.
 
 ---
+
+## Hardening Pass — Tasks Added (logging + UI verification)
+**Timestamp**: 2026-06-17T03:30:00Z
+**User Input**: (1) "yes, let's get it all sorted out" (do the remaining items); (2) "also, please make sure that it's compatible with Windows as well"; (3) "Please add a task: the conversion using UVTools should have logging attached, so that the user can track that it's working or see where failures might be."; (4) "Also, we need UI verification in the tests - ensure that everything appears and is functional."
+**AI Response**: Progressed hardening: T1 pinned real UVtools v7.1.2 release + per-OS/arch SHA-256 (macOS/Windows/Linux x64+arm64; downloaded each asset and computed checksums); verified the full real pipeline works (sliced .sl1 -> UVtoolsCmd convert -> valid 7.8MB .goo that re-opens in UVtools as Elegoo). T2 implemented archive extraction (miniz) + per-platform UVtoolsCmd entry resolution + unix chmod in UVToolsService; libslic3r recompiles clean. Made release table + invocation cross-platform (T3, Windows: win-*.zip, UVtoolsCmd.exe at zip root, no shell). Fixed download size_limit (was defaulting to 5MB -> would truncate ~75MB zip; now 512MB). Registered the two NEW user-requested tasks in aidlc-state.md "## Remaining Work": T4 conversion logging/observability (SECURITY-03 + resiliency; phase+outcome logging, stdout/stderr capture, GUI+CLI visibility, acceptance criteria defined) and T6 UI verification tests (Preferences UVtools path field + 3rd-party profile appearance/selection; headless wx harness or documented manual checklist). Also tracked T5 GUI path field (in progress), T7 RapidCheck port, T8 bundled-profile spec finalization. Cleaned a stale duplicate "Current Phase" line in state.
+**Context**: CONSTRUCTION - hardening pass; tasks T1/T2 done, T3/T5 in progress, T4/T6/T7/T8 queued.
+
+---
