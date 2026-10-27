@@ -84,6 +84,32 @@ TEST_CASE("Bundled 3rd-party SLA profiles expose valid uvtools targets", "[Angle
         auto ini = read_ini(path);
         REQUIRE_FALSE(ini.empty());
 
+        // Config Wizard discovery gate: vendor must declare repo_id = non-prusa-sla
+        // (otherwise it is silently dropped from the Add-printer wizard).
+        REQUIRE(ini.count("vendor") == 1);
+        CHECK(ini["vendor"].count("repo_id") == 1);
+        CHECK(ini["vendor"]["repo_id"] == "non-prusa-sla");
+        CHECK(ini["vendor"].count("config_version") == 1);
+
+        // Each printer_model must declare SLA technology + a default material.
+        int models = 0;
+        for (const auto &sec : ini) {
+            if (sec.first.rfind("printer_model:", 0) != 0) continue;
+            ++models;
+            CHECK(sec.second.count("technology") == 1);
+            CHECK(sec.second.at("technology") == "SLA");
+            CHECK(sec.second.count("default_materials") == 1);
+            CHECK_FALSE(sec.second.at("default_materials").empty());
+        }
+        CHECK(models > 0);
+
+        // The default material each model names must exist as an [sla_material:*] section.
+        for (const auto &sec : ini) {
+            if (sec.first.rfind("printer_model:", 0) != 0) continue;
+            const std::string mat = sec.second.at("default_materials");
+            CHECK(ini.count("sla_material:" + mat) == 1);
+        }
+
         // At least one [printer:*] section with SLA technology + a uvtools:* format.
         int sla_printers = 0, uvtools_targets = 0;
         for (const auto &sec : ini) {
@@ -114,6 +140,49 @@ TEST_CASE("Bundled 3rd-party SLA profiles expose valid uvtools targets", "[Angle
         CHECK(sla_printers > 0);
         CHECK(uvtools_targets == sla_printers);
     }
+}
+
+TEST_CASE("Bundled 3rd-party SLA profiles ship model thumbnails", "[AngledSlicing][UVtools][ui]")
+{
+    // The Config Wizard shows <VendorId>/<model id>_thumbnail.png; a real PNG is
+    // required or the wizard falls back to a generic placeholder.
+    REQUIRE_FALSE(profiles_dir().empty());
+
+    struct T { const char *vendor_dir; const char *model_id; };
+    const std::vector<T> thumbs = {
+        { "PhrozenSLA", "SONIC MEGA 8K S" },
+        { "PhrozenSLA", "SONIC MINI 8K" },
+        { "ElegooSLA",  "SATURN 4 ULTRA" },
+        { "ElegooSLA",  "MARS 4" },
+    };
+    for (const auto &t : thumbs) {
+        const std::string png = profiles_dir() + "/" + t.vendor_dir + "/" + t.model_id + "_thumbnail.png";
+        INFO("thumbnail: " << png);
+        std::ifstream in(png, std::ios::binary);
+        REQUIRE(in.good());
+        // PNG magic.
+        unsigned char sig[8] = {0};
+        in.read(reinterpret_cast<char*>(sig), 8);
+        const unsigned char png_magic[8] = {0x89,'P','N','G','\r','\n',0x1a,'\n'};
+        for (int i = 0; i < 8; ++i) CHECK(sig[i] == png_magic[i]);
+    }
+}
+
+TEST_CASE("Phrozen Sonic Mega 8K S profile has correct 8K specs", "[AngledSlicing][UVtools][ui]")
+{
+    // Guards the first end-to-end target against spec drift.
+    REQUIRE_FALSE(profiles_dir().empty());
+    auto ini = read_ini(profiles_dir() + "/PhrozenSLA.ini");
+    REQUIRE(ini.count("printer:Phrozen Sonic Mega 8K S") == 1);
+    const auto &p = ini.at("printer:Phrozen Sonic Mega 8K S");
+    CHECK(p.at("printer_technology") == "SLA");
+    CHECK(p.at("display_pixels_x") == "7680");
+    CHECK(p.at("display_pixels_y") == "4320");
+    CHECK(p.at("display_width") == "330");
+    CHECK(p.at("display_height") == "185");
+    CHECK(p.at("max_print_height") == "300");
+    CHECK(p.at("sla_archive_format") == "uvtools:ChituboxFile@4");
+    CHECK(p.at("default_sla_material_profile") == "Anycubic ABS-Like Grey Resin @PHROZEN 0.05");
 }
 
 TEST_CASE("UVtools executable path round-trips through AppConfig", "[AngledSlicing][UVtools][ui]")

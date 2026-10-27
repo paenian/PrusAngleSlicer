@@ -60,7 +60,9 @@
 - [x] T5 — **GUI UVtools path field**: added `uvtools_executable_path` text field to Preferences > Other; persists to AppConfig via existing accept() loop.
 - [x] T6 — **UI verification tests** (user-requested): automated data/wiring tests in test_uvtools_ui.cpp (bundled SLA profiles expose valid uvtools:* targets; AppConfig round-trips the UVtools path) + manual rendered-UI checklist (ui-verification-checklist.md). 10 UVtools cases / 2117 assertions pass. (wx has no in-repo headless harness; data-level + manual checklist is the chosen approach.)
 - [ ] T7 — Port property loops in test_uvtools_format.cpp to RapidCheck (PBT-09 framework); wire RapidCheck (pinned) into tests/libslic3r. (Next.)
-- [ ] T8 — Finalize/verify bundled profile specs (Anycubic/Phrozen/Elegoo) against pinned UVtools encoder names/extensions. (Next.)
+- [~] T8 — Bundled profile specs: Phrozen (Sonic Mega 8K S @ 7680x4320/330x185x300 -> ChituboxFile@4) + Elegoo (GooFile) verified against real UVtools encoder names; Sonic Mega 8K S conversion verified end-to-end (CTB v4, correct specs). Anycubic native profiles unchanged. (Done for Phrozen/Elegoo; Anycubic-via-UVtools optional later.)
+- [x] US-13 — Novice "Add printer" onboarding: PhrozenSLA + ElegooSLA made wizard-ready (repo_id=non-prusa-sla, .ini + .idx + model *_thumbnail.png), SLA auto-activates via printer_technology=SLA (no C++ change needed per ConfigWizard analysis), Anycubic ABS-Like Grey Resin default material bound. First target Phrozen Sonic Mega 8K S verified end-to-end. UI tests extended (12 cases/2194 assertions).
+- [ ] T7 — Port property loops in test_uvtools_format.cpp to RapidCheck (PBT-09 framework). (Remaining.)
 
 ## Execution Plan Summary
 - **Stages to Execute**: Application Design, Units Generation, Functional Design, NFR Requirements, NFR Design, Code Generation, Build and Test

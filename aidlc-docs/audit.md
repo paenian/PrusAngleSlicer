@@ -175,3 +175,19 @@ Timestamps use ISO 8601 (UTC).
 **Context**: CONSTRUCTION - hardening pass; tasks T1/T2 done, T3/T5 in progress, T4/T6/T7/T8 queued.
 
 ---
+
+## New User Story — Novice Add-Printer end-to-end (Phrozen Sonic Mega 8K S)
+**Timestamp**: 2026-06-17T04:00:00Z
+**User Input**: "As a novice user, I would like to load a non-Prusa SLA printer from the add printers setting, be able to configure it, and automatically have the SLA workflow activated and UV tools settings configured. First printer to test end to end should be the phrozen sonic mega 8k s. Ideally, the printers can be loaded with pictures, and with anycubic abs-like grey resin as a material."
+**AI Response**: Captured as a refinement of US-1 + a new novice onboarding story (US-13). New scope vs current impl: (1) printers must appear in the Config Wizard / "Add printer" flow (not just hand-loaded); (2) specific first target is Phrozen Sonic Mega 8K S (the 'S' variant — current PhrozenSLA.ini has 'Sonic Mega 8K' non-S; need correct specs); (3) selecting it auto-activates SLA technology/workflow; (4) UVtools target comes pre-configured via the profile's sla_archive_format; (5) printer thumbnails/pictures; (6) default material = Anycubic ABS-like grey resin bound as the printer's default SLA material. Investigating Config Wizard wiring + correct Mega 8K S specs before implementing.
+**Context**: CONSTRUCTION - new story US-13 (novice add-printer onboarding), extends U1 (profiles) + touches Config Wizard. Pauses T7/T8 to deliver this end-to-end target.
+
+---
+
+## US-13 Implementation — Phrozen Sonic Mega 8K S end-to-end (novice Add-printer)
+**Timestamp**: 2026-06-17T04:30:00Z
+**User Input**: (US-13 request) novice add-printer flow, Phrozen Sonic Mega 8K S first, pictures, Anycubic ABS-like grey resin default.
+**AI Response**: Context-gatherer confirmed Config Wizard needs NO C++ change: a bundled vendor appears if repo_id=non-prusa-sla (already a selected repo in ArchiveRepositoryManifest.json), with matching .idx and config_version <= idx recommended, and model thumbnails at resources/profiles/<VendorId>/<model id>_thumbnail.png; SLA auto-activates from printer_technology=SLA (Tab.cpp select_preset). Researched Sonic Mega 8K S specs: 330x185x300mm, 15" 8K mono LCD, 43um -> 7680x4320. Rewrote PhrozenSLA.ini (repo_id, Sonic Mega 8K S @ correct specs + Sonic Mini 8K, sla_print + sla_material profiles, Anycubic ABS-Like Grey Resin default material bound via default_materials + default_sla_material_profile, sla_archive_format=uvtools:ChituboxFile@4) + PhrozenSLA.idx + placeholder thumbnails. Did the same for ElegooSLA.ini/.idx/thumbnails (GooFile). Verified END-TO-END: sliced Mega 8K S specs -> .sl1 -> UVtoolsCmd convert ChituboxFile -v4 -> valid 2.4MB CTB v4 with ResolutionX7680/Y4320, BedSize330x185x300, 535 layers; re-opens in UVtools. Extended test_uvtools_ui.cpp with wizard-readiness (repo_id/default-material/material-section), thumbnail-presence, and Mega 8K S spec assertions -> 12 cases/2194 assertions pass. Added US-13 to stories.md. Note: thumbnails are placeholder PNGs (real product images can drop in with same filenames).
+**Context**: CONSTRUCTION - US-13 delivered (data + wiring + e2e conversion verified). Rendered-wizard confirmation pending a GUI session (checklist). T7 RapidCheck still remaining.
+
+---
