@@ -64,7 +64,14 @@
 - [x] US-13 — Novice "Add printer" onboarding: PhrozenSLA + ElegooSLA made wizard-ready (repo_id=non-prusa-sla, .ini + .idx + model *_thumbnail.png), SLA auto-activates via printer_technology=SLA (no C++ change needed per ConfigWizard analysis), Anycubic ABS-Like Grey Resin default material bound. First target Phrozen Sonic Mega 8K S verified end-to-end. UI tests extended (12 cases/2194 assertions).
 - [x] T7 — PBT framework (REVISED from RapidCheck -> Catch2 v3 generators + pbt::check shrinking helper; RapidCheck is Catch2-v2-only, not in deps, test-only — see tech-stack-decisions.md). Property tests use seeded generators (Catch::getSeed, reproducible via --rng-seed) + automatic shrinking to a minimal counterexample. Shrinking verified by a scratch self-check (dxbcd -> x). UVtools suite 12 cases pass; full libslic3r suite 241 pass.
 
-## Feature status: all hardening tasks (T1-T8) + US-13 complete. Remaining = manual GUI wizard walk-through (user doing now) + optional real product thumbnails.
+## Feature status: all hardening tasks (T1-T8) + US-13 complete. GUI live-test bug-fix pass in progress.
+
+## Live GUI test findings (Phrozen Sonic Mega 8K S) + fixes
+- Printer appears in Add-printer, config correct, slicing works. GOOD.
+- [x] BUG 1 FIXED — save dialog only offered "Prusa SL1" for a uvtools:* printer. sla_wildcards() now maps uvtools:* -> manufacturer extension (.ctb/.goo) via SLAFormatMap. (Also fixed a dangling string_view.)
+- [x] BUG 2 PARTIAL — "error launching uvtools": made the conversion failure a VISIBLE GUI notification (was log-only) so the real reason shows. Exact runtime cause still to be read from the next GUI run.
+- [ ] NEXT (on restart): user runs GUI export to Phrozen, reads the on-screen UVtools notification, reports exact error. Likely candidates: download of 75MB via Http body, extraction perms (chmod handled), or convert output path. Finalize acquisition/convert once the real message is known.
+- Remaining: confirm end-to-end GUI conversion produces a .ctb; optional real product thumbnails.
 
 ## Execution Plan Summary
 - **Stages to Execute**: Application Design, Units Generation, Functional Design, NFR Requirements, NFR Design, Code Generation, Build and Test

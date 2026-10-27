@@ -200,3 +200,13 @@ Timestamps use ISO 8601 (UTC).
 **Context**: CONSTRUCTION - T7 complete. All hardening tasks T1-T8 + US-13 done. Remaining = manual GUI wizard walk-through (user) + optional real thumbnails.
 
 ---
+
+## GUI live-test bug fixes (save-dialog format + visible UVtools error)
+**Timestamp**: 2026-06-17T05:40:00Z
+**User Input**: "The printer shows up and the configuration appears correct - slicing goes smoothly, but export only shows Prusa SL1 as an output. That should display the Phrozen format for the Phrozen printer. Also, when outputting, there is an error on what I believe is launching the uvtools." then "Finish up the bug fix - will have to restart this later"
+**AI Response**: Diagnosed + fixed two bugs found in live GUI testing of the Phrozen Sonic Mega 8K S:
+- BUG 1 (save dialog only offered Prusa SL1): sla_wildcards() in GUI_App.cpp looked up the archive registry via get_archive_entry(), which returns null for uvtools:* ids -> fell back to FT_SL1. Added a uvtools:* branch that builds the save-dialog file filter from SLAFormatMap::lookup (description + manufacturer extension, e.g. .ctb for ChituboxFile, .goo for GooFile). Fixed a dangling-string-view bug (FileWildcards.title/file_extensions are string_views) by holding the title+ext in locals that outlive the file_wildcards() call. Added SLAFormatMap include.
+- BUG 2 (UVtools error not visible / user saw a launch error): the conversion fallback warning previously only went to the boost log. Routed show_warning() to a visible GUI notification (NotificationManager push, WarningNotificationLevel) via CallAfter (background slicing thread -> GUI thread), so the actual failure reason (download/verify/extract/convert) is shown. Phase logging already added in T4 will also appear in the log. Added Plater.hpp + NotificationManager.hpp includes.
+  Note: Bug 1 also aggravated Bug 2 — because the dialog offered .sl1, the user likely saved as .sl1, making the writer's intermediate == final target. With the correct extension offered, the writer now produces model.sl1 (intermediate) -> model.ctb/.goo (final) cleanly.
+Build: full PrusaSlicer app builds+links clean, no dangling warning. Binary runs. The exact UVtools runtime error is still TBD — the visible notification will reveal it on the user's next GUI run (user is restarting later).
+**Context**: CONSTRUCTION - GUI bug-fix pass. Committed for restart. NEXT: user re-runs GUI export to a Phrozen printer, reads the on-screen UVtools notification, reports the exact reason so acquisition/convert can be finalized.

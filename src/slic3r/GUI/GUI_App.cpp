@@ -11,6 +11,7 @@
 #include "GUI_Init.hpp" // IWYU pragma: keep
 #include "GUI_ObjectList.hpp"
 #include "UVToolsIntegration.hpp"
+#include "libslic3r/Format/UVTools/SLAFormatMap.hpp"
 #include "GUI_ObjectManipulation.hpp"
 #include "GUI_Factories.hpp"
 #include "TopBar.hpp"
@@ -573,8 +574,28 @@ wxString file_wildcards(FileType file_type, const std::string &custom_extension)
 
 wxString sla_wildcards(const char *formatid, const std::string& custom_extension)
 {
-    const ArchiveEntry *entry = get_archive_entry(formatid);
     wxString ret;
+
+    // 3rd-party SLA: "uvtools:<EncoderName>[@version]" is not in the archive
+    // registry; build the save-dialog filter from the UVtools format map so the
+    // manufacturer extension (e.g. .ctb, .goo) is offered instead of .sl1.
+    if (formatid && Slic3r::uvtools::is_convert_target(formatid)) {
+        if (auto t = Slic3r::uvtools::lookup(formatid)) {
+            // Backing strings must outlive the file_wildcards() call because
+            // FileWildcards holds string_views.
+            const std::string title = GUI::format(_u8L("%s files"), t->description);
+            const std::string ext   = "." + t->extension;
+            FileWildcards wc;
+            wc.title = title;
+            wc.file_extensions.emplace_back(ext);
+            ret = file_wildcards(wc, custom_extension);
+        }
+        if (ret.empty())
+            ret = file_wildcards(FT_SL1, custom_extension);
+        return ret;
+    }
+
+    const ArchiveEntry *entry = get_archive_entry(formatid);
 
     if (entry) {
         FileWildcards wc;
