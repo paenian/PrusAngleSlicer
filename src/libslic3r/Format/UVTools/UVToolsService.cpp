@@ -4,6 +4,7 @@
 ///|/
 #include "UVToolsService.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -15,6 +16,8 @@
 #include <boost/filesystem.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/process.hpp>
+
+#include <miniz.h>
 
 namespace process = boost::process;
 
@@ -179,6 +182,42 @@ bool file_exists(const std::string &p)
     try { return !p.empty() && boost::filesystem::exists(p); }
     catch (...) { return false; }
 }
+
+// Extract every entry of `zip_path` under `dest_dir`, preserving the archive's
+// internal directory structure. Returns false on any error. Uses miniz.
+bool extract_zip(const std::string &zip_path, const std::string &dest_dir, std::string &err)
+{
+    namespace fs = boost::filesystem;
+    mz_zip_archive zip;
+    std::memset(&zip, 0, sizeof(zip));
+    if (! mz_zip_reader_init_file(&zip, zip_path.c_str(), 0)) {
+        err = "Could not open UVtools archive for extraction.";
+        return false;
+    }
+    bool ok = true;
+    mz_uint n = mz_zip_reader_get_num_files(&zip);
+    for (mz_uint i = 0; i < n && ok; ++i) {
+        mz_zip_archive_file_stat st;
+        if (! mz_zip_reader_file_stat(&zip, i, &st)) { ok = false; err = "Corrupt entry in UVtools archive."; break; }
+
+        // Normalize separators and guard against path traversal.
+        std::string name = st.m_filename;
+        std::replace(name.begin(), name.end(), '\\', '/');
+        if (name.find("..") != std::string::npos) { continue; } // skip suspicious entries
+
+        fs::path out = fs::path(dest_dir) / name;
+        if (mz_zip_reader_is_file_a_directory(&zip, i)) {
+            boost::system::error_code ec; fs::create_directories(out, ec);
+            continue;
+        }
+        boost::system::error_code ec; fs::create_directories(out.parent_path(), ec);
+        if (! mz_zip_reader_extract_to_file(&zip, i, out.string().c_str(), 0)) {
+            ok = false; err = "Failed to extract an entry from the UVtools archive."; break;
+        }
+    }
+    mz_zip_reader_end(&zip);
+    return ok;
+}
 } // namespace
 
 std::optional<std::string> UVToolsService::resolve_executable() const
@@ -195,6 +234,7 @@ ConvertResult UVToolsService::ensure_available(const ProgressFn &progress)
     ConvertResult r;
     if (auto exe = resolve_executable()) {
         m_resolved = *exe;
+        BOOST_LOG_TRIVIAL(info) << "[UVtools] Using existing executable: " << m_resolved;
         r.status = ConvertResult::Success;
         r.output_path = m_resolved;
         return r;
@@ -204,8 +244,14 @@ ConvertResult UVToolsService::ensure_available(const ProgressFn &progress)
     if (! m_download || ! m_release.valid()) {
         r.status = ConvertResult::ToolMissing;
         r.message = "UVtools is not available and automatic download is not configured.";
+        BOOST_LOG_TRIVIAL(warning) << "[UVtools] " << r.message
+            << " (download_fn=" << (m_download ? "set" : "unset")
+            << ", release_valid=" << (m_release.valid() ? "yes" : "no") << ")";
         return r;
     }
+
+    BOOST_LOG_TRIVIAL(info) << "[UVtools] Acquiring UVtools v" << m_release.version
+                            << " from " << m_release.url;
 
     namespace fs = boost::filesystem;
     fs::path tmp_zip;
@@ -220,11 +266,14 @@ ConvertResult UVToolsService::ensure_available(const ProgressFn &progress)
 
     std::string dl_err;
     if (progress) progress(0.0, "Downloading UVtools...");
+    BOOST_LOG_TRIVIAL(info) << "[UVtools] Download started -> " << tmp_zip.string();
     if (! m_download(m_release.url, tmp_zip.string(), progress, dl_err)) {
         r.status = ConvertResult::ToolMissing;
         r.message = "Failed to download UVtools: " + dl_err;
+        BOOST_LOG_TRIVIAL(error) << "[UVtools] Download failed: " << dl_err;
         return r;
     }
+    BOOST_LOG_TRIVIAL(info) << "[UVtools] Download complete; verifying integrity...";
 
     // Verify integrity before doing anything with the artifact.
     if (progress) progress(0.9, "Verifying UVtools download...");
@@ -243,19 +292,58 @@ ConvertResult UVToolsService::ensure_available(const ProgressFn &progress)
         r.status = ConvertResult::VerifyFailed;
         r.message = "UVtools download failed integrity verification (checksum mismatch). "
                     "The file was not executed.";
-        BOOST_LOG_TRIVIAL(error) << "UVtools SHA-256 mismatch: expected " << expected
-                                 << " got " << *got;
+        BOOST_LOG_TRIVIAL(error) << "[UVtools] SHA-256 mismatch: expected " << expected
+                                 << " got " << *got << " (download NOT executed)";
+        return r;
+    }
+    BOOST_LOG_TRIVIAL(info) << "[UVtools] Integrity verified (SHA-256 ok); extracting...";
+
+    // Extract the verified archive into a stable, versioned cache directory and
+    // resolve the UVtoolsCmd entry inside it.
+    if (progress) progress(0.95, "Extracting UVtools...");
+    fs::path extract_dir;
+    try {
+        extract_dir = fs::temp_directory_path() /
+                      ("uvtools-" + m_release.version);
+        boost::system::error_code ec;
+        fs::remove_all(extract_dir, ec);          // fresh extraction
+        fs::create_directories(extract_dir, ec);
+    } catch (const std::exception &e) {
+        boost::system::error_code ec; fs::remove(tmp_zip, ec);
+        r.status = ConvertResult::ToolMissing;
+        r.message = std::string("Cannot prepare UVtools cache directory: ") + e.what();
         return r;
     }
 
-    // NOTE: extraction of the verified zip and discovery of the UVtoolsCmd entry
-    // inside the extracted bundle is finalized during Build & Test against the
-    // pinned release layout. For now we record the verified archive path; the
-    // extracted executable path is what gets persisted/cached once unzipped.
-    // (Extraction uses the existing Zipper/miniz utility; wired in U4/Build&Test.)
-    m_resolved = tmp_zip.string();
+    std::string ex_err;
+    if (! extract_zip(tmp_zip.string(), extract_dir.string(), ex_err)) {
+        boost::system::error_code ec; fs::remove(tmp_zip, ec);
+        r.status = ConvertResult::ToolMissing;
+        r.message = "Failed to extract UVtools: " + ex_err;
+        return r;
+    }
+    { boost::system::error_code ec; fs::remove(tmp_zip, ec); } // drop the zip
+
+    fs::path entry = extract_dir / m_release.entry_relpath;
+    if (! fs::exists(entry)) {
+        r.status = ConvertResult::ToolMissing;
+        r.message = "UVtools CLI entry not found after extraction: " + m_release.entry_relpath;
+        return r;
+    }
+
+#ifndef _WIN32
+    // Ensure the CLI (and sibling helper) are executable on unix-likes.
+    try {
+        fs::permissions(entry,
+            fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exe |
+            fs::perms::others_read | fs::perms::others_exe);
+    } catch (...) { /* best-effort */ }
+#endif
+
+    m_resolved = entry.string();
     if (m_persist) m_persist(m_resolved);
     if (progress) progress(1.0, "UVtools ready.");
+    BOOST_LOG_TRIVIAL(info) << "[UVtools] Ready; executable resolved at: " << m_resolved;
     r.status = ConvertResult::Success;
     r.output_path = m_resolved;
     return r;
@@ -278,33 +366,55 @@ ConvertResult UVToolsService::convert(const std::string &src_sl1,
 
     std::vector<std::string> args = build_convert_args(src_sl1, dst_path, target);
 
+    BOOST_LOG_TRIVIAL(info) << "[UVtools] Converting '" << src_sl1 << "' -> '" << dst_path
+                            << "' as " << target.encoder_name
+                            << (target.version ? ("@v" + std::to_string(target.version)) : "")
+                            << " (timeout " << timeout_seconds << "s)";
+
     try {
+        process::ipstream pstdout;
         process::ipstream pstderr;
         // Argument-vector invocation: no shell interpolation -> injection-safe.
-        process::child child(m_resolved, process::args(args), process::std_err > pstderr);
+        process::child child(m_resolved, process::args(args),
+                             process::std_out > pstdout, process::std_err > pstderr);
 
         if (! child.wait_for(std::chrono::seconds(timeout_seconds))) {
             child.terminate();
             r.status = ConvertResult::Timeout;
-            r.message = "UVtools conversion timed out.";
+            r.message = "UVtools conversion timed out after " + std::to_string(timeout_seconds) + "s.";
+            BOOST_LOG_TRIVIAL(error) << "[UVtools] " << r.message;
             return r;
         }
 
-        std::string line, errtext;
+        // Capture both streams for observability (T4). UVtools writes its
+        // progress to stdout; errors/diagnostics may be on either stream.
+        std::string line, outtext, errtext;
+        while (std::getline(pstdout, line)) { outtext += line; outtext.push_back('\n'); }
         while (std::getline(pstderr, line)) { errtext += line; errtext.push_back('\n'); }
 
         int code = child.exit_code();
+        if (! outtext.empty())
+            BOOST_LOG_TRIVIAL(debug) << "[UVtools] stdout:\n" << outtext;
+        if (! errtext.empty())
+            BOOST_LOG_TRIVIAL(debug) << "[UVtools] stderr:\n" << errtext;
+
         if (code == 0 && boost::filesystem::exists(dst_path)) {
             r.status = ConvertResult::Success;
             r.output_path = dst_path;
+            BOOST_LOG_TRIVIAL(info) << "[UVtools] Conversion succeeded: " << dst_path;
         } else {
             r.status = ConvertResult::ConvertFailed;
+            // Prefer stderr, fall back to the tail of stdout, for the user message.
+            std::string diag = ! errtext.empty() ? errtext : outtext;
             r.message = "UVtools conversion failed (exit code " + std::to_string(code) + ")." +
-                        (errtext.empty() ? "" : ("\n" + errtext));
+                        (diag.empty() ? "" : ("\n" + diag));
+            BOOST_LOG_TRIVIAL(error) << "[UVtools] Conversion failed (exit code " << code << ")"
+                                     << (diag.empty() ? "" : (": " + diag));
         }
     } catch (const std::exception &e) {
         r.status = ConvertResult::ConvertFailed;
         r.message = std::string("Failed to run UVtools: ") + e.what();
+        BOOST_LOG_TRIVIAL(error) << "[UVtools] " << r.message;
     }
     return r;
 }

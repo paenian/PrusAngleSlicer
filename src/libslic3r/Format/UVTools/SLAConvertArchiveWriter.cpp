@@ -56,6 +56,9 @@ void SLAConvertArchiveWriter::export_print(const std::string     fname,
         return;
     }
 
+    BOOST_LOG_TRIVIAL(info) << "[UVtools convert] Export requested: format='" << archive_format
+                            << "' encoder='" << target->encoder_name << "' -> '" << fname << "'";
+
     // 1. Write the intermediate .sl1 next to the requested output.
     fs::path out_path(fname);
     fs::path sl1_path = out_path;
@@ -66,8 +69,10 @@ void SLAConvertArchiveWriter::export_print(const std::string     fname,
 
     try {
         SL1Archive::export_print(sl1_path.string(), print, thumbnails, projectname);
+        BOOST_LOG_TRIVIAL(info) << "[UVtools convert] Intermediate .sl1 written: " << sl1_path.string();
     } catch (const std::exception &e) {
         // If even the .sl1 can't be written, this is a genuine export error.
+        BOOST_LOG_TRIVIAL(error) << "[UVtools convert] Failed to write intermediate .sl1: " << e.what();
         throw;
     }
 
