@@ -12,6 +12,7 @@
 #include "SLAArchiveFormatRegistry.hpp"
 #include "libslic3r/Format/SLAArchiveReader.hpp"
 #include "libslic3r/libslic3r.h"
+#include "UVTools/SLAFormatMap.hpp"
 
 namespace Slic3r {
 
@@ -136,6 +137,19 @@ ArchiveReaderFactory get_reader_factory(const char *formatid)
 const char *get_default_extension(const char *formatid)
 {
     static constexpr const char *Empty = "";
+
+    // 3rd-party SLA: "uvtools:<EncoderName>[@version]" maps to the manufacturer
+    // extension (e.g. ctb, goo). Held in a thread-local so the returned pointer
+    // stays valid for the caller.
+    if (formatid && uvtools::is_convert_target(formatid)) {
+        thread_local std::string ext_holder;
+        if (auto t = uvtools::lookup(formatid)) {
+            ext_holder = t->extension;
+            return ext_holder.c_str();
+        }
+        ext_holder = "sl1"; // malformed uvtools id -> fall back to sl1
+        return ext_holder.c_str();
+    }
 
     const char * ret = Empty;
 

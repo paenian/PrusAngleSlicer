@@ -123,6 +123,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/GUI_Init.hpp
     GUI/GUI_Preview.cpp
     GUI/GUI_Preview.hpp
+    GUI/UVToolsIntegration.cpp
+    GUI/UVToolsIntegration.hpp
     GUI/GUI_App.cpp
     GUI/GUI_App.hpp
     GUI/GUI_Utils.cpp

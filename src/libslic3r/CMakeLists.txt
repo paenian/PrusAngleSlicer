@@ -161,6 +161,12 @@ set(SLIC3R_SOURCES
     Format/SVG.cpp
     Format/SLAArchiveFormatRegistry.hpp
     Format/SLAArchiveFormatRegistry.cpp
+    Format/UVTools/SLAFormatMap.hpp
+    Format/UVTools/SLAFormatMap.cpp
+    Format/UVTools/UVToolsService.hpp
+    Format/UVTools/UVToolsService.cpp
+    Format/UVTools/SLAConvertArchiveWriter.hpp
+    Format/UVTools/SLAConvertArchiveWriter.cpp
     Format/PrintRequest.cpp
     Format/PrintRequest.cpp
     GCode/ThumbnailData.cpp

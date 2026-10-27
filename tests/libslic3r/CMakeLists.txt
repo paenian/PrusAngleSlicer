@@ -29,6 +29,7 @@ add_executable(${_TEST_NAME}_tests
     test_multiple_beds.cpp
 	test_region_expansion.cpp
 	test_timeutils.cpp
+	test_uvtools_format.cpp
 	test_utils.cpp
 	test_voronoi.cpp
     test_optimizers.cpp
