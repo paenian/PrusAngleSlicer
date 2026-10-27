@@ -10,6 +10,8 @@
 #include <boost/log/trivial.hpp>
 
 #include "GUI_App.hpp"
+#include "Plater.hpp"
+#include "NotificationManager.hpp"
 #include "libslic3r/AppConfig.hpp"
 #include "libslic3r/Format/UVTools/SLAConvertArchiveWriter.hpp"
 #include "libslic3r/Format/UVTools/UVToolsService.hpp"
@@ -125,9 +127,19 @@ void persist_cached_path(const std::string &resolved)
 
 void show_warning(const std::string &msg)
 {
-    // Non-fatal: log and surface through the standard notification/log path.
+    // Non-fatal: log AND surface a visible GUI notification so the user sees the
+    // reason (e.g. download/convert failure). Runs on the background slicing
+    // thread, so marshal onto the GUI thread.
     BOOST_LOG_TRIVIAL(warning) << "[UVtools] " << msg;
-    // A richer GUI notification can be added; logging keeps it non-blocking.
+    std::string text = "UVtools SLA conversion: " + msg;
+    wxGetApp().CallAfter([text]() {
+        if (auto *plater = wxGetApp().plater()) {
+            if (auto *nm = plater->get_notification_manager())
+                nm->push_notification(NotificationType::CustomNotification,
+                                      NotificationManager::NotificationLevel::WarningNotificationLevel,
+                                      text);
+        }
+    });
 }
 
 } // namespace
