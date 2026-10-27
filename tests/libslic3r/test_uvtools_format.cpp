@@ -15,6 +15,7 @@
 
 #include "libslic3r/Format/UVTools/SLAFormatMap.hpp"
 #include "libslic3r/Format/UVTools/UVToolsService.hpp"
+#include "uvtools_property.hpp"
 
 using namespace Slic3r::uvtools;
 
@@ -74,35 +75,55 @@ TEST_CASE("UVtools property: is_convert_target <=> lookup(nonmalformed)", "[Angl
     }
 }
 
+namespace {
+// A generated well-formed uvtools id plus the encoder/version that produced it.
+struct GenId {
+    std::string encoder;   // non-empty alnum
+    unsigned    version;   // 0 = none
+    std::string id() const {
+        std::string s = "uvtools:" + encoder;
+        if (version) s += "@" + std::to_string(version);
+        return s;
+    }
+};
+std::ostream &operator<<(std::ostream &os, const GenId &g) { return os << g.id(); }
+} // namespace
+
 TEST_CASE("UVtools property: generated well-formed ids always parse", "[AngledSlicing][UVtools]")
 {
-    // Property loop (RapidCheck-ready): random valid encoder names + versions
-    // must always parse, and the parsed encoder/version must match the input.
-    std::mt19937 rng(12345);
+    // Property (Catch2 generators + pbt::check): random valid encoder names +
+    // versions must always parse to the same encoder/version, with a non-empty
+    // extension. Seeded from Catch2 (reproduce a failure with --rng-seed).
+    auto &rng = pbt::rng();
     std::uniform_int_distribution<int> len_dist(1, 12);
     std::uniform_int_distribution<int> ver_dist(0, 999);
     std::uniform_int_distribution<int> ch_dist(0, 51);
     auto rand_name = [&](int n) {
         std::string s;
-        for (int i = 0; i < n; ++i) {
-            int c = ch_dist(rng);
-            s.push_back(char(c < 26 ? 'A' + c : 'a' + (c - 26)));
-        }
+        for (int i = 0; i < n; ++i) { int c = ch_dist(rng); s.push_back(char(c < 26 ? 'A' + c : 'a' + (c - 26))); }
         return s;
     };
 
-    for (int iter = 0; iter < 500; ++iter) {
-        std::string name = rand_name(len_dist(rng));
-        int ver = ver_dist(rng);
-        std::string id = "uvtools:" + name;
-        if (ver > 0) id += "@" + std::to_string(ver);
+    auto gen = [&]() -> GenId {
+        return GenId{ rand_name(len_dist(rng)), (unsigned) ver_dist(rng) };
+    };
+    auto prop = [](const GenId &g) -> bool {
+        auto t = lookup(g.id());
+        return t.has_value()
+            && t->encoder_name == g.encoder
+            && t->version == g.version
+            && ! t->extension.empty();
+    };
+    // Shrink: trim the encoder name / drop the version, keeping it well-formed
+    // (encoder stays non-empty), to report a minimal failing id.
+    auto shrink = [](const GenId &g) -> std::vector<GenId> {
+        std::vector<GenId> out;
+        if (g.version != 0)                 out.push_back(GenId{ g.encoder, 0 });
+        if (g.encoder.size() > 1)           out.push_back(GenId{ g.encoder.substr(0, g.encoder.size() - 1), g.version });
+        return out;
+    };
 
-        auto t = lookup(id);
-        REQUIRE(t.has_value());
-        CHECK(t->encoder_name == name);
-        CHECK(t->version == (unsigned)(ver > 0 ? ver : 0));
-        CHECK_FALSE(t->extension.empty());
-    }
+    pbt::check<GenId>(500, gen, prop, shrink);
 }
 
 TEST_CASE("UVtools convert args are well-formed and injection-safe", "[AngledSlicing][UVtools]")
@@ -129,24 +150,56 @@ TEST_CASE("UVtools convert args are well-formed and injection-safe", "[AngledSli
     CHECK(args2[5] == "4");
 }
 
-TEST_CASE("UVtools convert args property: paths passed verbatim as separate argv entries",
+TEST_CASE("UVtools convert args property: nasty paths pass verbatim as separate argv entries",
           "[AngledSlicing][UVtools]")
 {
-    // Property: however nasty the path (spaces, quotes, semicolons), it appears
-    // as a single, unmodified argv entry -> no shell injection possible.
-    const std::vector<std::string> nasty = {
-        "/tmp/a b.sl1",
-        "/tmp/a';rm -rf ~'.sl1",
-        "/tmp/a\"b.sl1",
-        "/tmp/a$(whoami).sl1",
-        "/tmp/a|b&c.sl1",
+    // Property (generated): however nasty the path (spaces, quotes, $(), ;, |, &,
+    // backticks, newlines), it appears as a single, UNMODIFIED argv entry, so no
+    // shell metacharacter can ever be interpreted -> no injection is possible.
+    // Fixed adversarial fragments combined randomly, seeded from Catch2.
+    auto &rng = pbt::rng();
+    static const std::vector<std::string> frags = {
+        "a", " ", "b", "';rm -rf ~'", "\"", "$(whoami)", "|", "&", "`id`", ";",
+        ">out", "<in", "\n", "\t", "..", "/", "x",
+    };
+    std::uniform_int_distribution<size_t> nfrag(1, 8);
+    std::uniform_int_distribution<size_t> pick(0, frags.size() - 1);
+
+    auto gen = [&]() -> std::string {
+        std::string p = "/tmp/";
+        size_t n = nfrag(rng);
+        for (size_t i = 0; i < n; ++i) p += frags[pick(rng)];
+        p += ".sl1";
+        return p;
     };
     UVToolsTarget t; t.encoder_name = "GooFile"; t.version = 0;
+    auto prop = [&t](const std::string &p) -> bool {
+        auto args = build_convert_args(p, p + ".goo", t);
+        return args.size() == 5
+            && args[0] == "convert"
+            && args[1] == p            // input verbatim
+            && args[2] == "GooFile"    // fixed encoder token, never the path
+            && args[3] == p + ".goo"   // output verbatim
+            && args[4] == "--no-overwrite";
+    };
+    // Shrink: drop characters from the path tail toward a minimal failing input.
+    auto shrink = [](const std::string &p) -> std::vector<std::string> {
+        std::vector<std::string> out;
+        if (p.size() > 1) out.push_back(p.substr(0, p.size() - 1));
+        return out;
+    };
+
+    pbt::check<std::string>(500, gen, prop, shrink);
+
+    // Keep the fixed, well-known adversarial cases too (explicit regression set).
+    const std::vector<std::string> nasty = {
+        "/tmp/a b.sl1", "/tmp/a';rm -rf ~'.sl1", "/tmp/a\"b.sl1",
+        "/tmp/a$(whoami).sl1", "/tmp/a|b&c.sl1",
+    };
     for (const auto &p : nasty) {
         auto args = build_convert_args(p, p + ".goo", t);
-        CHECK(args[1] == p);            // input path verbatim
-        CHECK(args[3] == p + ".goo");   // output path verbatim
-        // encoder name is a fixed token, never the path
+        CHECK(args[1] == p);
+        CHECK(args[3] == p + ".goo");
         CHECK(args[2] == "GooFile");
     }
 }

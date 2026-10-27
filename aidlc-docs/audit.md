@@ -191,3 +191,12 @@ Timestamps use ISO 8601 (UTC).
 **Context**: CONSTRUCTION - US-13 delivered (data + wiring + e2e conversion verified). Rendered-wizard confirmation pending a GUI session (checklist). T7 RapidCheck still remaining.
 
 ---
+
+## T7 — PBT framework (RapidCheck -> Catch2 generators + shrinking helper)
+**Timestamp**: 2026-06-17T05:00:00Z
+**User Input**: "knock out T7 while I fire up the gui to check it out"
+**AI Response**: Investigated RapidCheck: NOT in deps, and its test integration is Catch2-v2-only while this repo uses Catch2 v3.8 — it won't plug into TEST_CASE here, and vendoring a sizable lib for a test-only concern conflicts with NFR-1. Decision REVISED (documented in tech-stack-decisions.md): use Catch2 v3 generators + a small pbt::check helper (tests/libslic3r/uvtools_property.hpp) providing seeded generators (Catch::getSeed, reproducible via --rng-seed), domain generators, and automatic shrinking to a minimal counterexample. Ported both property loops in test_uvtools_format.cpp (generated well-formed ids round-trip; nasty-path convert-arg injection-safety) to pbt::check with generators + shrink functions. Verified shrinking with a throwaway self-check: failing property on 'contains x' shrank dxbcd -> x and reported seed 7 for reproduction; then removed the scratch test. UVtools suite 12 cases pass (default + --rng-seed 42); full libslic3r suite 241 pass (1 failed-as-expected). This satisfies PBT-09/PBT-08 intent (generators, seed reproducibility, CI, minimal reproducing case) using the in-build framework.
+**PBT Compliance**: properties implemented with shrinking + seed reproducibility; framework decision documented as a justified deviation. No blocking findings.
+**Context**: CONSTRUCTION - T7 complete. All hardening tasks T1-T8 + US-13 done. Remaining = manual GUI wizard walk-through (user) + optional real thumbnails.
+
+---

@@ -62,7 +62,9 @@
 - [ ] T7 — Port property loops in test_uvtools_format.cpp to RapidCheck (PBT-09 framework); wire RapidCheck (pinned) into tests/libslic3r. (Next.)
 - [~] T8 — Bundled profile specs: Phrozen (Sonic Mega 8K S @ 7680x4320/330x185x300 -> ChituboxFile@4) + Elegoo (GooFile) verified against real UVtools encoder names; Sonic Mega 8K S conversion verified end-to-end (CTB v4, correct specs). Anycubic native profiles unchanged. (Done for Phrozen/Elegoo; Anycubic-via-UVtools optional later.)
 - [x] US-13 — Novice "Add printer" onboarding: PhrozenSLA + ElegooSLA made wizard-ready (repo_id=non-prusa-sla, .ini + .idx + model *_thumbnail.png), SLA auto-activates via printer_technology=SLA (no C++ change needed per ConfigWizard analysis), Anycubic ABS-Like Grey Resin default material bound. First target Phrozen Sonic Mega 8K S verified end-to-end. UI tests extended (12 cases/2194 assertions).
-- [ ] T7 — Port property loops in test_uvtools_format.cpp to RapidCheck (PBT-09 framework). (Remaining.)
+- [x] T7 — PBT framework (REVISED from RapidCheck -> Catch2 v3 generators + pbt::check shrinking helper; RapidCheck is Catch2-v2-only, not in deps, test-only — see tech-stack-decisions.md). Property tests use seeded generators (Catch::getSeed, reproducible via --rng-seed) + automatic shrinking to a minimal counterexample. Shrinking verified by a scratch self-check (dxbcd -> x). UVtools suite 12 cases pass; full libslic3r suite 241 pass.
+
+## Feature status: all hardening tasks (T1-T8) + US-13 complete. Remaining = manual GUI wizard walk-through (user doing now) + optional real product thumbnails.
 
 ## Execution Plan Summary
 - **Stages to Execute**: Application Design, Units Generation, Functional Design, NFR Requirements, NFR Design, Code Generation, Build and Test

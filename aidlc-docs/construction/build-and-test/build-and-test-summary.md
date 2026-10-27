@@ -20,7 +20,7 @@
   - convert-arg well-formedness + **injection-safety property** (nasty paths stay single argv entries)
   - vendored SHA-256 verified against the known `"abc"` vector
 - Regression: full `libslic3r_tests "~[arc_welder]"` → **237 passed, 1 failed-as-expected** (Catch2 shouldfail; not a real failure). Pre-existing arc_welder bus error excluded (upstream, unrelated).
-- PBT framework: RapidCheck is the chosen framework (NFR-9); this pass implements the properties as Catch2 generated-input loops (RapidCheck-ready) to avoid blocking on a new dep. **Follow-up: wire RapidCheck + port the loops to `rc::check`.**
+- PBT framework (T7 DONE): RapidCheck was reversed (Catch2-v2-only integration vs this repo's Catch2 v3.8; not in deps; test-only). Now uses Catch2 v3 generators + a `pbt::check` helper (`tests/libslic3r/uvtools_property.hpp`) with seeded generators (reproducible via `--rng-seed`) and automatic shrinking to a minimal counterexample (verified: a seeded failure shrank `dxbcd` -> `x`). Satisfies PBT-09/PBT-08 intent without a new dependency. See tech-stack-decisions.md for the deviation rationale.
 
 ## End-to-end verification (CLI)
 - Sliced a 20 mm cube with an SLA config `sla_archive_format = uvtools:GooFile`, `--export-sla --output out.goo`.
