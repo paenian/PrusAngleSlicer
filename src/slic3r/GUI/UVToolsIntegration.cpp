@@ -12,7 +12,10 @@
 #include "GUI_App.hpp"
 #include "Plater.hpp"
 #include "NotificationManager.hpp"
+#include <boost/filesystem.hpp>
+
 #include "libslic3r/AppConfig.hpp"
+#include "libslic3r/Utils.hpp"
 #include "libslic3r/Format/UVTools/SLAConvertArchiveWriter.hpp"
 #include "libslic3r/Format/UVTools/UVToolsService.hpp"
 #include "slic3r/Utils/Http.hpp"
@@ -47,6 +50,10 @@ uvtools::UVToolsRelease pinned_release_for_current_arch()
 {
     uvtools::UVToolsRelease rel;
     rel.version = UVTOOLS_PINNED_VERSION;
+    // Persistent, per-user install location (survives temp-dir cleaning):
+    //   <data_dir>/uvtools/v<version>
+    rel.install_dir = (boost::filesystem::path(Slic3r::data_dir()) / "uvtools" /
+                       (std::string("v") + UVTOOLS_PINNED_VERSION)).string();
 
 #if defined(_WIN32)
     // Windows: zip root contains UVtoolsCmd.exe.
@@ -144,11 +151,41 @@ void show_warning(const std::string &msg)
 
 } // namespace
 
+void refresh_uvtools_paths()
+{
+    SLAConvertArchiveWriter::set_paths(paths_from_appconfig());
+}
+
+bool uvtools_is_available()
+{
+    uvtools::UVToolsService svc(paths_from_appconfig(), pinned_release_for_current_arch());
+    return svc.resolve_executable().has_value();
+}
+
+uvtools::UVToolsService make_uvtools_service()
+{
+    return uvtools::UVToolsService(paths_from_appconfig(), pinned_release_for_current_arch(),
+                                   &download_file, &persist_cached_path);
+}
+
+std::string uvtools_install_dir()
+{
+    return pinned_release_for_current_arch().install_dir;
+}
+
+std::string uvtools_pinned_version()
+{
+    return UVTOOLS_PINNED_VERSION;
+}
+
 void init_uvtools_integration()
 {
     SLAConvertArchiveWriter::set_paths(paths_from_appconfig());
     SLAConvertArchiveWriter::set_release(pinned_release_for_current_arch());
-    SLAConvertArchiveWriter::set_download_fn(&download_file);
+    // Acquisition is owned by the modal UVToolsDialog (GUI thread, with progress and
+    // Cancel), invoked from Plater::get_output_path. The export writer therefore does
+    // NOT download on its own: if UVtools is missing it falls back to a plain .sl1 with
+    // a warning instead of silently fetching ~75 MB on the background thread.
     SLAConvertArchiveWriter::set_persist_fn(&persist_cached_path);
     SLAConvertArchiveWriter::set_warning_fn(&show_warning);
 }

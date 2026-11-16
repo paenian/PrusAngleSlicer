@@ -243,7 +243,8 @@ ConvertResult UVToolsService::ensure_available(const ProgressFn &progress)
     // Need to acquire. Requires a download function and a valid pinned release.
     if (! m_download || ! m_release.valid()) {
         r.status = ConvertResult::ToolMissing;
-        r.message = "UVtools is not available and automatic download is not configured.";
+        r.message = "UVtools is not installed. Export again and choose \"Download and install\", "
+                    "or set its path in Preferences > Other.";
         BOOST_LOG_TRIVIAL(warning) << "[UVtools] " << r.message
             << " (download_fn=" << (m_download ? "set" : "unset")
             << ", release_valid=" << (m_release.valid() ? "yes" : "no") << ")";
@@ -271,6 +272,7 @@ ConvertResult UVToolsService::ensure_available(const ProgressFn &progress)
         r.status = ConvertResult::ToolMissing;
         r.message = "Failed to download UVtools: " + dl_err;
         BOOST_LOG_TRIVIAL(error) << "[UVtools] Download failed: " << dl_err;
+        { boost::system::error_code ec; fs::remove(tmp_zip, ec); }   // drop any partial file
         return r;
     }
     BOOST_LOG_TRIVIAL(info) << "[UVtools] Download complete; verifying integrity...";
@@ -303,8 +305,9 @@ ConvertResult UVToolsService::ensure_available(const ProgressFn &progress)
     if (progress) progress(0.95, "Extracting UVtools...");
     fs::path extract_dir;
     try {
-        extract_dir = fs::temp_directory_path() /
-                      ("uvtools-" + m_release.version);
+        extract_dir = m_release.install_dir.empty()
+            ? fs::temp_directory_path() / ("uvtools-" + m_release.version)
+            : fs::path(m_release.install_dir);
         boost::system::error_code ec;
         fs::remove_all(extract_dir, ec);          // fresh extraction
         fs::create_directories(extract_dir, ec);

@@ -43,3 +43,15 @@ headless wx runner is fragile/unsupported here. So UI verification is split:
 ## Status
 - Automated data/wiring tests: implemented (`test_uvtools_ui.cpp`).
 - Manual rendered-UI checklist: to be run on a GUI session (macOS verified build available).
+
+### E. UVtools download dialog (added after live GUI test)
+Preconditions: a Phrozen/Elegoo SLA printer selected; UVtools NOT installed
+(`rm -rf ~/Library/Application\ Support/PrusaSlicer/uvtools` and clear
+`uvtools_cached_path` / `uvtools_executable_path` in PrusaSlicer.ini).
+1. Slice, click Export. CONFIRM: before the save dialog, a modal "UVtools required for this printer" appears showing the version, ~75 MB, the install folder, and the AGPL note.
+2. Click **Download and install**. CONFIRM: progress bar + phase text advance; **Cancel** stops it and returns to the first view ("Download cancelled.").
+3. Let it finish. CONFIRM: dialog closes, the save dialog offers `.ctb`, and `<data dir>/uvtools/v7.1.2/UVtools.app/Contents/MacOS/UVtoolsCmd` exists; `uvtools_cached_path` is set in PrusaSlicer.ini.
+4. Export again. CONFIRM: no dialog this time (already linked) and a `.ctb` is produced.
+5. Reset, click Export, choose **Use my own UVtools...**, pick a UVtoolsCmd. CONFIRM: dialog closes and `uvtools_executable_path` is set.
+6. Reset, choose **Export .sl1 instead**. CONFIRM: export proceeds and leaves a plain `.sl1` plus a notification explaining why.
+7. Disconnect the network, choose Download. CONFIRM: a failure view shows the reason with **Retry / Use my own / Export .sl1 / Cancel**.
