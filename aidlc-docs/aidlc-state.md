@@ -70,6 +70,7 @@
 - Printer appears in Add-printer, config correct, slicing works. GOOD.
 - [x] BUG 1 FIXED — save dialog only offered "Prusa SL1" for a uvtools:* printer. sla_wildcards() now maps uvtools:* -> manufacturer extension (.ctb/.goo) via SLAFormatMap. (Also fixed a dangling string_view.)
 - [x] BUG 2 PARTIAL — "error launching uvtools": made the conversion failure a VISIBLE GUI notification (was log-only) so the real reason shows. Exact runtime cause still to be read from the next GUI run.
+- [x] UVtools DOWNLOAD DIALOG (user request): modal UVToolsDialog (confirm -> progress+cancel -> failed/retry; or 'use my own'; or 'export .sl1 instead'), shown from Plater::get_output_path on the GUI thread BEFORE the save dialog. Installs to a PERSISTENT <data_dir>/uvtools/v<ver> (was the OS temp dir, which can be cleared) and links by persisting uvtools_cached_path + refreshing the writer's paths. Writer no longer downloads on the bg thread (falls back to .sl1 + warning). Hermetic tests for acquire/verify/extract/link/convert added (test_uvtools_service.cpp, 16 cases pass). Rendered dialog still needs a GUI run (checklist section E).
 - [ ] NEXT (on restart): user runs GUI export to Phrozen, reads the on-screen UVtools notification, reports exact error. Likely candidates: download of 75MB via Http body, extraction perms (chmod handled), or convert output path. Finalize acquisition/convert once the real message is known.
 - Remaining: confirm end-to-end GUI conversion produces a .ctb; optional real product thumbnails.
 

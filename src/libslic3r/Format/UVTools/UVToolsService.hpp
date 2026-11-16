@@ -54,6 +54,10 @@ struct UVToolsRelease {
     //   Windows: "UVtoolsCmd.exe"
     //   Linux:   "UVtoolsCmd"
     std::string entry_relpath;
+    // Directory the verified archive is extracted into (persistent, e.g.
+    // <data_dir>/uvtools/v7.1.2). If empty, falls back to a temp directory,
+    // which the OS may clear -- so callers should always set this.
+    std::string install_dir;
     bool valid() const { return !version.empty() && !url.empty() && !sha256.empty() && !entry_relpath.empty(); }
 };
 

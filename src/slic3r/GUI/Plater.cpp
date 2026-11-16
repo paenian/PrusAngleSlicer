@@ -89,6 +89,8 @@
 
 #include "GUI.hpp"
 #include "GUI_App.hpp"
+#include "UVToolsDialog.hpp"
+#include "libslic3r/Format/UVTools/SLAFormatMap.hpp"
 #include "GUI_ObjectList.hpp"
 #include "GUI_ObjectManipulation.hpp"
 #include "GUI_Utils.hpp"
@@ -5931,6 +5933,16 @@ std::optional<wxString> Plater::check_output_path_has_error(const boost::filesys
 };
 
 std::optional<fs::path> Plater::get_output_path(const std::string &start_dir, const fs::path &default_output_file) {
+    // 3rd-party SLA printers convert through UVtools. Make sure it is installed
+    // (download + verify + link, with a modal dialog) BEFORE the user picks a file,
+    // on the GUI thread -- the export itself runs on a background thread and must
+    // not block on UI.
+    if (printer_technology() == ptSLA &&
+        Slic3r::uvtools::is_convert_target(active_sla_print().printer_config().sla_archive_format.value)) {
+        if (ensure_uvtools_ready(this) == UVToolsPrep::Cancelled)
+            return std::nullopt;
+    }
+
     const std::string ext = default_output_file.extension().string();
     wxFileDialog dlg(this, (printer_technology() == ptFFF) ? _L("Save G-code file as:") : _L("Save SL1 / SL1S file as:"),
         start_dir,
