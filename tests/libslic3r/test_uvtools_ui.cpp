@@ -68,7 +68,7 @@ std::string profiles_dir()
 
 } // namespace
 
-TEST_CASE("Bundled 3rd-party SLA profiles expose valid uvtools targets", "[AngledSlicing][UVtools][ui]")
+TEST_CASE("Bundled 3rd-party SLA profiles expose valid uvtools targets", "[UVtools][ui]")
 {
     REQUIRE_FALSE(profiles_dir().empty());
 
@@ -142,7 +142,7 @@ TEST_CASE("Bundled 3rd-party SLA profiles expose valid uvtools targets", "[Angle
     }
 }
 
-TEST_CASE("Bundled 3rd-party SLA profiles ship model thumbnails", "[AngledSlicing][UVtools][ui]")
+TEST_CASE("Bundled 3rd-party SLA profiles ship model thumbnails", "[UVtools][ui]")
 {
     // The Config Wizard shows <VendorId>/<model id>_thumbnail.png; a real PNG is
     // required or the wizard falls back to a generic placeholder.
@@ -168,7 +168,7 @@ TEST_CASE("Bundled 3rd-party SLA profiles ship model thumbnails", "[AngledSlicin
     }
 }
 
-TEST_CASE("Phrozen Sonic Mega 8K S profile has correct 8K specs", "[AngledSlicing][UVtools][ui]")
+TEST_CASE("Phrozen Sonic Mega 8K S profile has correct 8K specs", "[UVtools][ui]")
 {
     // Guards the first end-to-end target against spec drift.
     REQUIRE_FALSE(profiles_dir().empty());
@@ -186,7 +186,7 @@ TEST_CASE("Phrozen Sonic Mega 8K S profile has correct 8K specs", "[AngledSlicin
     CHECK(p.at("default_sla_material_profile") == "Anycubic ABS-Like Grey Resin @PHROZEN 0.05");
 }
 
-TEST_CASE("UVtools executable path round-trips through AppConfig", "[AngledSlicing][UVtools][ui]")
+TEST_CASE("UVtools executable path round-trips through AppConfig", "[UVtools][ui]")
 {
     // Mirrors what the Preferences 'Other' tab field reads/writes.
     AppConfig cfg(AppConfig::EAppMode::Editor);

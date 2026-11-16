@@ -19,7 +19,7 @@
 
 using namespace Slic3r::uvtools;
 
-TEST_CASE("UVtools prefix detection", "[AngledSlicing][UVtools]")
+TEST_CASE("UVtools prefix detection", "[UVtools]")
 {
     CHECK(is_convert_target("uvtools:GooFile"));
     CHECK(is_convert_target("uvtools:ChituboxFile@3"));
@@ -30,7 +30,7 @@ TEST_CASE("UVtools prefix detection", "[AngledSlicing][UVtools]")
     CHECK_FALSE(is_convert_target("uvtool:GooFile")); // not the prefix
 }
 
-TEST_CASE("UVtools lookup parses encoder and version", "[AngledSlicing][UVtools]")
+TEST_CASE("UVtools lookup parses encoder and version", "[UVtools]")
 {
     auto a = lookup("uvtools:GooFile");
     REQUIRE(a.has_value());
@@ -72,7 +72,7 @@ TEST_CASE("UVtools lookup parses encoder and version", "[AngledSlicing][UVtools]
     CHECK(c->extension == "mystery");
 }
 
-TEST_CASE("UVtools lookup rejects malformed values", "[AngledSlicing][UVtools]")
+TEST_CASE("UVtools lookup rejects malformed values", "[UVtools]")
 {
     CHECK_FALSE(lookup("SL1").has_value());          // not a uvtools target
     CHECK_FALSE(lookup("uvtools:").has_value());     // empty encoder
@@ -84,7 +84,7 @@ TEST_CASE("UVtools lookup rejects malformed values", "[AngledSlicing][UVtools]")
     CHECK_FALSE(lookup("uvtools:.prz").has_value());       // extension but no encoder
 }
 
-TEST_CASE("UVtools property: is_convert_target <=> lookup(nonmalformed)", "[AngledSlicing][UVtools]")
+TEST_CASE("UVtools property: is_convert_target <=> lookup(nonmalformed)", "[UVtools]")
 {
     // Property: for the supported target set, is_convert_target is true AND
     // lookup yields a value that round-trips encoder+extension.
@@ -115,7 +115,7 @@ struct GenId {
 std::ostream &operator<<(std::ostream &os, const GenId &g) { return os << g.id(); }
 } // namespace
 
-TEST_CASE("UVtools property: generated well-formed ids always parse", "[AngledSlicing][UVtools]")
+TEST_CASE("UVtools property: generated well-formed ids always parse", "[UVtools]")
 {
     // Property (Catch2 generators + pbt::check): random valid encoder names +
     // versions must always parse to the same encoder/version, with a non-empty
@@ -158,7 +158,7 @@ TEST_CASE("UVtools property: generated well-formed ids always parse", "[AngledSl
     pbt::check<GenId>(500, gen, prop, shrink);
 }
 
-TEST_CASE("UVtools convert args are well-formed and injection-safe", "[AngledSlicing][UVtools]")
+TEST_CASE("UVtools convert args are well-formed and injection-safe", "[UVtools]")
 {
     UVToolsTarget t;
     t.encoder_name = "GooFile";
@@ -183,7 +183,7 @@ TEST_CASE("UVtools convert args are well-formed and injection-safe", "[AngledSli
 }
 
 TEST_CASE("UVtools convert args property: nasty paths pass verbatim as separate argv entries",
-          "[AngledSlicing][UVtools]")
+          "[UVtools]")
 {
     // Property (generated): however nasty the path (spaces, quotes, $(), ;, |, &,
     // backticks, newlines), it appears as a single, UNMODIFIED argv entry, so no
@@ -236,7 +236,7 @@ TEST_CASE("UVtools convert args property: nasty paths pass verbatim as separate 
     }
 }
 
-TEST_CASE("UVtools SHA-256 matches known vectors", "[AngledSlicing][UVtools]")
+TEST_CASE("UVtools SHA-256 matches known vectors", "[UVtools]")
 {
     // Verify the vendored SHA-256 against a known file content.
     // (empty file -> known SHA-256 of empty input)
