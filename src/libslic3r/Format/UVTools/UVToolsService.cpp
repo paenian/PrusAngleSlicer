@@ -220,12 +220,30 @@ bool extract_zip(const std::string &zip_path, const std::string &dest_dir, std::
 }
 } // namespace
 
+// Marker written only after a complete, verified install. Its content is the pinned
+// SHA-256 of the archive that was installed, so a half-extracted folder (crash or
+// cancel mid-install) or one from a different pin is never trusted.
+static const char *INSTALL_MARKER = ".install-complete";
+
 std::optional<std::string> UVToolsService::resolve_executable() const
 {
     if (file_exists(m_paths.override_path))
         return m_paths.override_path;
     if (file_exists(m_paths.cached_path))
         return m_paths.cached_path;
+
+    // Self-healing: a completed install at the standard location is found even if
+    // the remembered path was lost or stale (e.g. moved settings, older build).
+    if (! m_release.install_dir.empty() && ! m_release.entry_relpath.empty()) {
+        namespace fs = boost::filesystem;
+        const fs::path dir(m_release.install_dir);
+        const fs::path entry = dir / m_release.entry_relpath;
+        std::ifstream marker((dir / INSTALL_MARKER).string());
+        std::string recorded;
+        if (marker && std::getline(marker, recorded) && recorded == m_release.sha256 &&
+            file_exists(entry.string()))
+            return entry.string();
+    }
     return std::nullopt;
 }
 
@@ -342,6 +360,12 @@ ConvertResult UVToolsService::ensure_available(const ProgressFn &progress)
             fs::perms::others_read | fs::perms::others_exe);
     } catch (...) { /* best-effort */ }
 #endif
+
+    // Mark the install complete (verified + fully extracted + executable).
+    {
+        std::ofstream marker((extract_dir / INSTALL_MARKER).string(), std::ios::trunc);
+        marker << m_release.sha256 << "\n";
+    }
 
     m_resolved = entry.string();
     if (m_persist) m_persist(m_resolved);

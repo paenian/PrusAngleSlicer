@@ -124,12 +124,23 @@ bool download_file(const std::string &url, const std::string &dest,
     return ok;
 }
 
+// AppConfig is not thread-safe and AppConfig::save() throws if it is called off the
+// main thread. The service calls this from whatever thread runs the acquisition
+// (the download dialog's worker), so always hop to the GUI thread, and never let a
+// failed save escape: the path is still remembered in memory for this session.
 void persist_cached_path(const std::string &resolved)
 {
-    if (AppConfig *cfg = wxGetApp().app_config) {
+    wxGetApp().CallAfter([resolved]() {
+        AppConfig *cfg = wxGetApp().app_config;
+        if (! cfg) return;
         cfg->set("", "uvtools_cached_path", resolved);
-        cfg->save();
-    }
+        try {
+            cfg->save();
+        } catch (const std::exception &e) {
+            BOOST_LOG_TRIVIAL(error) << "[UVtools] Could not save the remembered UVtools path: " << e.what();
+        }
+        refresh_uvtools_paths();
+    });
 }
 
 void show_warning(const std::string &msg)

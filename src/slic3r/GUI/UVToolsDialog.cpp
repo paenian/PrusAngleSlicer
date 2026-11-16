@@ -153,7 +153,20 @@ private:
                 });
                 return ! m_cancel.load();
             };
-            uvtools::ConvertResult r = service->ensure_available(progress);
+            // An exception escaping a std::thread calls std::terminate and kills the
+            // whole application. Turn any failure into a normal error result instead.
+            uvtools::ConvertResult r;
+            try {
+                r = service->ensure_available(progress);
+            } catch (const std::exception &e) {
+                r.status  = uvtools::ConvertResult::ToolMissing;
+                r.message = std::string("Unexpected error while installing UVtools: ") + e.what();
+                BOOST_LOG_TRIVIAL(error) << "[UVtools] " << r.message;
+            } catch (...) {
+                r.status  = uvtools::ConvertResult::ToolMissing;
+                r.message = "Unexpected error while installing UVtools.";
+                BOOST_LOG_TRIVIAL(error) << "[UVtools] " << r.message;
+            }
             wxGetApp().CallAfter([this, alive, r]() {
                 if (*alive) on_worker_done(r);
             });
@@ -170,7 +183,16 @@ private:
     {
         m_running = false;
         if (r.ok()) {
-            refresh_uvtools_paths();        // link: writer now sees the remembered path
+            // Link: remember the installed path (GUI thread, so AppConfig is safe to
+            // save), then let the export writer see it.
+            if (AppConfig *cfg = wxGetApp().app_config) {
+                cfg->set("", "uvtools_cached_path", r.output_path);
+                try { cfg->save(); }
+                catch (const std::exception &e) {
+                    BOOST_LOG_TRIVIAL(error) << "[UVtools] Could not save settings: " << e.what();
+                }
+            }
+            refresh_uvtools_paths();
             BOOST_LOG_TRIVIAL(info) << "[UVtools] Installed and linked: " << r.output_path;
             finish(UVToolsPrep::Ready);
         } else if (m_cancel) {

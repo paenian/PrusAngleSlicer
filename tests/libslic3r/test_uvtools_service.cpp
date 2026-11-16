@@ -105,6 +105,62 @@ TEST_CASE("UVtools acquire: downloads, verifies, installs persistently and links
     CHECK(again.ensure_available(nullptr).ok());
 }
 
+TEST_CASE("UVtools completed install is found again with no remembered path", "[UVtools][service]")
+{
+    Fixture f;
+    {
+        UVToolsService svc({}, f.release(), f.fake_download(), nullptr);
+        REQUIRE(svc.ensure_available(nullptr).ok());
+    }
+    // New session, settings lost/stale: the install at the standard location is
+    // still discovered, so there is no second download.
+    UVToolsPaths stale; stale.cached_path = "/does/not/exist/UVtoolsCmd";
+    UVToolsService again(stale, f.release(), /*no download*/ nullptr);
+    auto exe = again.resolve_executable();
+    REQUIRE(exe.has_value());
+    CHECK(fs::exists(*exe));
+    CHECK(again.ensure_available(nullptr).ok());
+}
+
+TEST_CASE("UVtools half-finished or foreign installs are not trusted", "[UVtools][service]")
+{
+    Fixture f;
+    // Entry exists but there is no completion marker (crash / cancel mid-extract).
+    fs::create_directories((f.install / ENTRY).parent_path());
+    { std::ofstream((f.install / ENTRY).string()) << "#!/bin/sh\n"; }
+    UVToolsService partial({}, f.release(), nullptr);
+    CHECK_FALSE(partial.resolve_executable().has_value());
+
+    // Marker recorded for a different archive (the pin changed): also not trusted.
+    { std::ofstream((f.install / ".install-complete").string()) << std::string(64, 'a') << "\n"; }
+    UVToolsService foreign({}, f.release(), nullptr);
+    CHECK_FALSE(foreign.resolve_executable().has_value());
+
+    // A retry replaces the partial folder with a clean, verified install.
+    UVToolsService retry({}, f.release(), f.fake_download(), nullptr);
+    REQUIRE(retry.ensure_available(nullptr).ok());
+    UVToolsService after({}, f.release(), nullptr);
+    CHECK(after.resolve_executable().has_value());
+}
+
+TEST_CASE("UVtools persistence callback may be invoked from the worker thread", "[UVtools][service]")
+{
+    // Regression: the GUI persistence callback used to call AppConfig::save() on the
+    // download thread, which throws and (uncaught on a std::thread) aborted the app.
+    // The service must call the callback exactly once per install, after the install
+    // is complete on disk, so a GUI-thread hand-off in the callback is safe.
+    Fixture f;
+    int calls = 0;
+    bool complete_when_called = false;
+    UVToolsService svc({}, f.release(), f.fake_download(), [&](const std::string &p) {
+        ++calls;
+        complete_when_called = fs::exists(p) && fs::exists(f.install / ".install-complete");
+    });
+    REQUIRE(svc.ensure_available(nullptr).ok());
+    CHECK(calls == 1);
+    CHECK(complete_when_called);
+}
+
 TEST_CASE("UVtools acquire then convert runs the installed tool", "[UVtools][service]")
 {
     Fixture f;
