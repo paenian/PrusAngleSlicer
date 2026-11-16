@@ -55,3 +55,9 @@ Preconditions: a Phrozen/Elegoo SLA printer selected; UVtools NOT installed
 5. Reset, click Export, choose **Use my own UVtools...**, pick a UVtoolsCmd. CONFIRM: dialog closes and `uvtools_executable_path` is set.
 6. Reset, choose **Export .sl1 instead**. CONFIRM: export proceeds and leaves a plain `.sl1` plus a notification explaining why.
 7. Disconnect the network, choose Download. CONFIRM: a failure view shows the reason with **Retry / Use my own / Export .sl1 / Cancel**.
+
+### F. Sonic Mega 8K S profile refresh (vendor config 1.0.1)
+1. Start the app. CONFIRM: a configuration update offering "Phrozen SLA" 1.0.1 appears (the installed copy is 1.0.0). Accept it. If it does not appear, run the Configuration Wizard once and finish it.
+2. Select the Phrozen Sonic Mega 8K S. CONFIRM: layer-height presets 0.025 Fine / 0.05 Normal / 0.1 Draft are offered and the Anycubic ABS-Like Grey Resin stays compatible with all three.
+3. Export. CONFIRM: the save dialog offers "Phrozen PRZ files (*.prz)" and the result is a `.prz`.
+4. Open the `.prz` in UVtools (or print-properties). CONFIRM: 7680x4320, 330x185 mm, lift/retract as set in the material notes.

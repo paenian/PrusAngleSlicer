@@ -32,6 +32,7 @@ add_executable(${_TEST_NAME}_tests
 	test_uvtools_format.cpp
 	test_uvtools_ui.cpp
 	test_uvtools_service.cpp
+	test_uvtools_profiles.cpp
 	test_utils.cpp
 	test_voronoi.cpp
     test_optimizers.cpp
