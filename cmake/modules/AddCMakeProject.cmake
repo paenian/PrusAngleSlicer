@@ -62,6 +62,7 @@ function(add_cmake_project projectname)
         DOWNLOAD_DIR        ${${PROJECT_NAME}_DEP_DOWNLOAD_DIR}/${projectname}
         BINARY_DIR          ${CMAKE_CURRENT_BINARY_DIR}/builds/${projectname}
         CMAKE_ARGS
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
             -DCMAKE_INSTALL_PREFIX:STRING=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}
             -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
             -DCMAKE_PREFIX_PATH:STRING=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}
