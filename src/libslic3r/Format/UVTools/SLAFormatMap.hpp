@@ -13,7 +13,12 @@
 namespace Slic3r { namespace uvtools {
 
 // Prefix that marks an sla_archive_format value as a UVtools-convert target.
-// e.g. "uvtools:ChituboxFile@3", "uvtools:GooFile", "uvtools:AnycubicFile"
+// Grammar: uvtools:<EncoderName>[@<version>][.<ext>]
+//   "uvtools:GooFile"            Elegoo GOO (default extension .goo)
+//   "uvtools:GooFile.prz"        Phrozen PRZ -- same UVtools encoder, different output
+//                                extension. The extension matters: GooFile encodes the
+//                                layers differently when the output file ends in .prz.
+//   "uvtools:ChituboxFile@4"     Chitubox CTB, format version 4
 static constexpr const char *UVTOOLS_PREFIX = "uvtools:";
 
 // A resolved UVtools conversion target parsed from an sla_archive_format value.
@@ -24,7 +29,8 @@ struct UVToolsTarget {
     std::string encoder_name;
     // Optional format version passed as `-v <version>`. 0 means "unspecified".
     unsigned int version = 0;
-    // Output file extension (lower-case, no dot), used for the produced file.
+    // Output file extension (lower-case, no dot). This is the extension the FINAL file
+    // must carry: some encoders (GooFile) pick their layer encoding from it.
     std::string extension;
     // Human-readable description (GUI/logging).
     std::string description;

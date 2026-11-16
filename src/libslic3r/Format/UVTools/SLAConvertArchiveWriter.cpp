@@ -61,6 +61,26 @@ void SLAConvertArchiveWriter::export_print(const std::string     fname,
 
     // 1. Write the intermediate .sl1 next to the requested output.
     fs::path out_path(fname);
+
+    // The final file must carry the target's extension: UVtools picks the output
+    // flavour from it (GooFile encodes .prz differently from .goo), so a wrong
+    // extension would silently yield a file the printer cannot read.
+    {
+        const std::string want = "." + target->extension;
+        std::string have = out_path.extension().string();
+        std::string have_lc = have, want_lc = want;
+        for (char &c : have_lc) c = char(std::tolower((unsigned char) c));
+        for (char &c : want_lc) c = char(std::tolower((unsigned char) c));
+        if (have_lc != want_lc) {
+            fs::path fixed = out_path;
+            fixed.replace_extension(want);
+            emit_warning("The " + target->description + " format requires the '" + want +
+                         "' file extension, so the file was saved as: " + fixed.string());
+            out_path = fixed;
+        }
+    }
+    const std::string final_name = out_path.string();
+
     fs::path sl1_path = out_path;
     sl1_path.replace_extension("sl1");
     // Avoid clobbering the final output if it happened to be named .sl1.
@@ -81,7 +101,7 @@ void SLAConvertArchiveWriter::export_print(const std::string     fname,
     uvtools::ProgressFn progress = g_progress;
 
     uvtools::ConvertResult res =
-        service.ensure_and_convert(sl1_path.string(), fname, *target, progress);
+        service.ensure_and_convert(sl1_path.string(), final_name, *target, progress);
 
     if (res.ok()) {
         // Success: remove the intermediate, leave only the manufacturer file.
