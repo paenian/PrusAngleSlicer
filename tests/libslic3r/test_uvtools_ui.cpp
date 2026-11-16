@@ -181,7 +181,8 @@ TEST_CASE("Phrozen Sonic Mega 8K S profile has correct 8K specs", "[AngledSlicin
     CHECK(p.at("display_width") == "330");
     CHECK(p.at("display_height") == "185");
     CHECK(p.at("max_print_height") == "300");
-    CHECK(p.at("sla_archive_format") == "uvtools:ChituboxFile@4");
+    // Phrozen's .prz is written by UVtools' GooFile encoder (not Chitubox .ctb).
+    CHECK(p.at("sla_archive_format") == "uvtools:GooFile.prz");
     CHECK(p.at("default_sla_material_profile") == "Anycubic ABS-Like Grey Resin @PHROZEN 0.05");
 }
 

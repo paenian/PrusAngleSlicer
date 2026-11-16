@@ -44,6 +44,27 @@ TEST_CASE("UVtools lookup parses encoder and version", "[AngledSlicing][UVtools]
     CHECK(b->version == 4);
     CHECK(b->extension == "ctb");
 
+    // Same encoder, different flavour chosen by the extension suffix. Phrozen's .prz
+    // is written by UVtools' GooFile; the plain id keeps Elegoo's .goo.
+    auto prz = lookup("uvtools:GooFile.prz");
+    REQUIRE(prz.has_value());
+    CHECK(prz->encoder_name == "GooFile");
+    CHECK(prz->extension == "prz");
+    CHECK(prz->description == "Phrozen PRZ");
+    CHECK(prz->version == 0);
+
+    auto goo = lookup("uvtools:GooFile");
+    REQUIRE(goo.has_value());
+    CHECK(goo->extension == "goo");
+    CHECK(goo->description == "Elegoo GOO");
+
+    // Version and extension together, extension case-insensitive.
+    auto both = lookup("uvtools:ChituboxFile@4.CTB");
+    REQUIRE(both.has_value());
+    CHECK(both->encoder_name == "ChituboxFile");
+    CHECK(both->version == 4);
+    CHECK(both->extension == "ctb");
+
     // Unknown but well-formed encoder: accepted, extension guessed.
     auto c = lookup("uvtools:MysteryFile");
     REQUIRE(c.has_value());
@@ -58,6 +79,9 @@ TEST_CASE("UVtools lookup rejects malformed values", "[AngledSlicing][UVtools]")
     CHECK_FALSE(lookup("uvtools:GooFile@").has_value());   // @ with no version
     CHECK_FALSE(lookup("uvtools:GooFile@0").has_value());  // zero version
     CHECK_FALSE(lookup("uvtools:GooFile@x").has_value());  // non-numeric version
+    CHECK_FALSE(lookup("uvtools:GooFile.").has_value());   // '.' with no extension
+    CHECK_FALSE(lookup("uvtools:GooFile.p/z").has_value()); // non-alphanumeric extension
+    CHECK_FALSE(lookup("uvtools:.prz").has_value());       // extension but no encoder
 }
 
 TEST_CASE("UVtools property: is_convert_target <=> lookup(nonmalformed)", "[AngledSlicing][UVtools]")
@@ -80,9 +104,11 @@ namespace {
 struct GenId {
     std::string encoder;   // non-empty alnum
     unsigned    version;   // 0 = none
+    std::string ext;       // empty = encoder's default extension
     std::string id() const {
         std::string s = "uvtools:" + encoder;
         if (version) s += "@" + std::to_string(version);
+        if (! ext.empty()) s += "." + ext;
         return s;
     }
 };
@@ -104,22 +130,28 @@ TEST_CASE("UVtools property: generated well-formed ids always parse", "[AngledSl
         return s;
     };
 
+    std::uniform_int_distribution<int> has_ext(0, 1);
     auto gen = [&]() -> GenId {
-        return GenId{ rand_name(len_dist(rng)), (unsigned) ver_dist(rng) };
+        std::string ext = has_ext(rng) ? rand_name(len_dist(rng)) : std::string();
+        for (char &c : ext) c = char(std::tolower((unsigned char) c));
+        return GenId{ rand_name(len_dist(rng)), (unsigned) ver_dist(rng), ext };
     };
     auto prop = [](const GenId &g) -> bool {
         auto t = lookup(g.id());
         return t.has_value()
             && t->encoder_name == g.encoder
             && t->version == g.version
-            && ! t->extension.empty();
+            && ! t->extension.empty()
+            // an explicit extension is always honoured verbatim
+            && (g.ext.empty() || t->extension == g.ext);
     };
     // Shrink: trim the encoder name / drop the version, keeping it well-formed
     // (encoder stays non-empty), to report a minimal failing id.
     auto shrink = [](const GenId &g) -> std::vector<GenId> {
         std::vector<GenId> out;
-        if (g.version != 0)                 out.push_back(GenId{ g.encoder, 0 });
-        if (g.encoder.size() > 1)           out.push_back(GenId{ g.encoder.substr(0, g.encoder.size() - 1), g.version });
+        if (! g.ext.empty())                out.push_back(GenId{ g.encoder, g.version, "" });
+        if (g.version != 0)                 out.push_back(GenId{ g.encoder, 0, g.ext });
+        if (g.encoder.size() > 1)           out.push_back(GenId{ g.encoder.substr(0, g.encoder.size() - 1), g.version, g.ext });
         return out;
     };
 
