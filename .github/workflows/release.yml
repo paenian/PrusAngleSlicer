@@ -46,7 +46,7 @@ jobs:
 
   macos:
     needs: label
-    runs-on: macos-14            # Apple Silicon (arm64)
+    runs-on: macos-15            # Apple Silicon (arm64)
     timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
