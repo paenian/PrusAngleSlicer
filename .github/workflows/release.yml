@@ -80,9 +80,10 @@ jobs:
       - name: Build dependencies (slow, first run only)
         if: steps.deps.outputs.hit != 'true'
         run: |
+          set -o pipefail
           cd deps/build
-          cmake .. -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-          make -j"$(sysctl -n hw.ncpu)"
+          { cmake .. -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
+            make -j"$(sysctl -n hw.ncpu)"; } 2>&1 | tee "$RUNNER_TEMP/deps-build.log"
 
       # Stored right away so later failures do not throw away hours of work.
       - name: Store prebuilt dependencies
@@ -101,13 +102,14 @@ jobs:
 
       - name: Build app and tests
         run: |
-          cmake -S . -B build \
+          set -o pipefail
+          { cmake -S . -B build \
             -DCMAKE_PREFIX_PATH="$PWD/deps/build/destdir/usr/local" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-            -DSLIC3R_BUILD_LABEL="${{ needs.label.outputs.label }}"
-          cmake --build build --target PrusaSlicer libslic3r_tests -j"$(sysctl -n hw.ncpu)"
+            -DSLIC3R_BUILD_LABEL="${{ needs.label.outputs.label }}" &&
+            cmake --build build --target PrusaSlicer libslic3r_tests -j"$(sysctl -n hw.ncpu)"; } 2>&1 | tee "$RUNNER_TEMP/app-build.log"
 
       - name: Feature tests (blocking)
         run: build/tests/libslic3r/libslic3r_tests "$FEATURE_TESTS"
@@ -129,6 +131,14 @@ jobs:
           PY
           "dist/$APP_NAME.app/Contents/MacOS/PrusaSlicer" --export-gcode cube.stl --output cube.gcode
           head -1 cube.gcode
+
+      - name: Report build errors
+        if: failure()
+        run: |
+          for l in deps-build app-build; do
+            [ -f "$RUNNER_TEMP/$l.log" ] && python3 .github/scripts/report_errors.py "$RUNNER_TEMP/$l.log" "macOS $l failed"
+          done
+          true
 
       - uses: actions/upload-artifact@v4
         with:
@@ -173,9 +183,11 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force deps\build | Out-Null
           cd deps\build
-          cmake .. -G "Visual Studio 17 2022" -A x64 -DDESTDIR="$env:DEPS_DIR" -DDEP_DEBUG=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          $ErrorActionPreference = 'Continue'
+          $log = "$env:RUNNER_TEMP\deps-build.log"
+          cmake .. -G "Visual Studio 17 2022" -A x64 -DDESTDIR="$env:DEPS_DIR" -DDEP_DEBUG=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 2>&1 | Tee-Object -FilePath $log
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          cmake --build . --config Release -- /m
+          cmake --build . --config Release -- /m 2>&1 | Tee-Object -FilePath $log -Append
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       # Stored right away so later failures do not throw away hours of work.
@@ -200,13 +212,15 @@ jobs:
       - name: Build app and tests
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Continue'
+          $log = "$env:RUNNER_TEMP\app-build.log"
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_PREFIX_PATH="$env:DEPS_DIR\usr\local" `
             -DCMAKE_CONFIGURATION_TYPES=Release `
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
-            -DSLIC3R_BUILD_LABEL="${{ needs.label.outputs.label }}"
+            -DSLIC3R_BUILD_LABEL="${{ needs.label.outputs.label }}" 2>&1 | Tee-Object -FilePath $log
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          cmake --build build --config Release -- /m
+          cmake --build build --config Release -- /m 2>&1 | Tee-Object -FilePath $log -Append
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Feature tests (blocking)
@@ -233,6 +247,16 @@ jobs:
           & "dist\$env:APP_NAME\prusa-slicer-console.exe" --export-gcode cube.stl --output cube.gcode
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Get-Content cube.gcode -TotalCount 1
+
+      - name: Report build errors
+        if: failure()
+        shell: pwsh
+        run: |
+          foreach ($l in 'deps-build', 'app-build') {
+            $f = "$env:RUNNER_TEMP\$l.log"
+            if (Test-Path $f) { python .github/scripts/report_errors.py $f "Windows $l failed" }
+          }
+          exit 0
 
       - uses: actions/upload-artifact@v4
         with:
