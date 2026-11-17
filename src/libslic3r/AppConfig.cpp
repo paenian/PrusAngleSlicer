@@ -134,7 +134,9 @@ void AppConfig::set_defaults()
             set("use_binary_gcode_when_supported", "1");
  
        if (get("notify_release").empty())
-           set("notify_release", "all"); // or "none" or "release"
+           // Fork builds: off by default -- upstream release notices would point users to
+           // official PrusaSlicer, which lacks this fork's features. Users can still opt in.
+           set("notify_release", "none"); // or "all" or "release"
 
 #if ENABLE_ENVIRONMENT_MAP
         if (get("use_environment_map").empty())

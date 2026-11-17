@@ -17,7 +17,9 @@
 #include "libslic3r_version.h"
 
 // Profiles for the alpha are stored into the PrusaSlicer-alpha directory to not mix with the current release.
-#define SLIC3R_APP_FULL_NAME SLIC3R_APP_KEY
+// Names the settings/data folder and the wx application. Uses the fork brand
+// (SLIC3R_APP_NAME) so the fork does not share settings with official PrusaSlicer.
+#define SLIC3R_APP_FULL_NAME SLIC3R_APP_NAME
 // #define SLIC3R_APP_FULL_NAME SLIC3R_APP_KEY "-alpha"
 // #define SLIC3R_APP_FULL_NAME SLIC3R_APP_KEY "-beta"
 
