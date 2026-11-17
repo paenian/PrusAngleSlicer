@@ -9,11 +9,11 @@
   <key>CFBundleIconFile</key>
   <string>PrusaSlicer.icns</string>
   <key>CFBundleName</key>
-  <string>@SLIC3R_APP_KEY@</string>
+  <string>@SLIC3R_APP_NAME@</string>
   <key>CFBundleShortVersionString</key>
   <string>@SLIC3R_APP_NAME@ @SLIC3R_BUILD_ID@</string>
   <key>CFBundleIdentifier</key>
-  <string>com.prusa3d.slic3r/</string>
+  <string>@SLIC3R_BUNDLE_ID@</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundlePackageType</key>
@@ -127,17 +127,6 @@
       <string>Alternate</string>
     </dict>
   </array>
-  <key>CFBundleURLTypes</key>
-    <array>
-      <dict>
-        <key>CFBundleURLName</key>
-        <string>PrusaSlicer Downloads</string>
-        <key>CFBundleURLSchemes</key>
-        <array>
-          <string>prusaslicer</string>
-        </array>
-      </dict>
-    </array>
   <key>LSMinimumSystemVersion</key>
   <string>10.13</string>
   <key>NSPrincipalClass</key>

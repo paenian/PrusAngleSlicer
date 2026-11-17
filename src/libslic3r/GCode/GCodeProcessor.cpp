@@ -1290,7 +1290,10 @@ void GCodeProcessor::process_binary_file(const std::string& filename, GCodeReade
             throw_error(format("Error reading file %1%: %2%", filename, std::string(translate_result(res))));
         auto producer_it = std::find_if(file_metadata_block.raw_data.begin(), file_metadata_block.raw_data.end(),
             [](const std::pair<std::string, std::string>& item) { return item.first == "Producer"; });
-        if (producer_it != file_metadata_block.raw_data.end() && boost::starts_with(producer_it->second, std::string(SLIC3R_APP_NAME)))
+        // Our own binary G-code says SLIC3R_APP_NAME (the fork brand); official PrusaSlicer says
+        // "PrusaSlicer". Both use the same tags.
+        if (producer_it != file_metadata_block.raw_data.end() &&
+            (boost::starts_with(producer_it->second, std::string(SLIC3R_APP_NAME)) || boost::starts_with(producer_it->second, "PrusaSlicer")))
             m_producer = EProducer::PrusaSlicer;
         else
             m_producer = EProducer::Unknown;

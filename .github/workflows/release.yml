@@ -1,0 +1,215 @@
+# Builds the macOS (Apple Silicon) and Windows (x64) apps for this branch and, for a
+# release tag, publishes them as a GitHub Release.
+#
+#   Release:  push a tag   prusslaslicer-v<version>   (e.g. prusslaslicer-v2.9.7-1)
+#   Test run: Actions tab > "Release builds" > Run workflow  (artifacts only, no release)
+#
+# Branch-specific settings are in `env` below. The angled-slicing branch carries the
+# same file with its own values.
+name: Release builds
+
+on:
+  push:
+    tags: ['prusslaslicer-v*']
+  workflow_dispatch:
+
+env:
+  APP_NAME: PrusSLASlicer
+  TAG_PREFIX: prusslaslicer-v
+  # Blocking tests for this branch's feature. The full suite runs too, informational.
+  FEATURE_TESTS: '[UVtools]'
+  MACOSX_DEPLOYMENT_TARGET: '12.0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.l.outputs.label }}
+    steps:
+      - id: l
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/${TAG_PREFIX}* ]]; then
+            label="${GITHUB_REF#refs/tags/${TAG_PREFIX}}"
+          else
+            label="test-${GITHUB_SHA::7}"
+          fi
+          echo "label=$label" >> "$GITHUB_OUTPUT"
+          echo "Release label: $label"
+
+  macos:
+    needs: label
+    runs-on: macos-14            # Apple Silicon (arm64)
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build tools
+        run: brew install automake autoconf libtool texinfo gettext m4 || true
+
+      - name: Restore dependencies
+        id: deps-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: deps/build/destdir
+          key: deps-macos-arm64-${{ env.MACOSX_DEPLOYMENT_TARGET }}-${{ hashFiles('deps/**', 'cmake/modules/AddCMakeProject.cmake') }}
+
+      - name: Build dependencies (slow, first run only)
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p deps/build && cd deps/build
+          cmake .. -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          make -j"$(sysctl -n hw.ncpu)"
+
+      # Saved right away so a later failure does not throw away hours of work.
+      - name: Save dependencies
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: deps/build/destdir
+          key: ${{ steps.deps-cache.outputs.cache-primary-key }}
+
+      - name: Build app and tests
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_PREFIX_PATH="$PWD/deps/build/destdir/usr/local" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DSLIC3R_BUILD_LABEL="${{ needs.label.outputs.label }}"
+          cmake --build build --target PrusaSlicer libslic3r_tests -j"$(sysctl -n hw.ncpu)"
+
+      - name: Feature tests (blocking)
+        run: build/tests/libslic3r/libslic3r_tests "$FEATURE_TESTS"
+
+      - name: Full test suite (informational)
+        continue-on-error: true
+        run: build/tests/libslic3r/libslic3r_tests "~[arc_welder]"
+
+      - name: Package
+        run: packaging/macos/package.sh build dist "${{ needs.label.outputs.label }}"
+
+      - name: Smoke test the packaged app
+        run: |
+          python3 - <<'PY'
+          import struct
+          s=10.0; v=[(-s,-s,0),(s,-s,0),(s,s,0),(-s,s,0),(-s,-s,20),(s,-s,20),(s,s,20),(-s,s,20)]
+          t=[(0,2,1),(0,3,2),(4,5,6),(4,6,7),(0,1,5),(0,5,4),(2,3,7),(2,7,6),(1,2,6),(1,6,5),(0,4,7),(0,7,3)]
+          open('cube.stl','wb').write(b'\0'*80+struct.pack('<I',len(t))+b''.join(struct.pack('<fff',0,0,0)+b''.join(struct.pack('<fff',*v[i]) for i in x)+struct.pack('<H',0) for x in t))
+          PY
+          "dist/$APP_NAME.app/Contents/MacOS/PrusaSlicer" --export-gcode cube.stl --output cube.gcode
+          head -1 cube.gcode
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  windows:
+    needs: label
+    runs-on: windows-2022
+    timeout-minutes: 350
+    env:
+      DEPS_DIR: D:\deps-out
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore dependencies
+        id: deps-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: D:\deps-out
+          key: deps-windows-x64-${{ hashFiles('deps/**', 'cmake/modules/AddCMakeProject.cmake') }}
+
+      - name: Build dependencies (slow, first run only)
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force deps\build | Out-Null
+          cd deps\build
+          cmake .. -G "Visual Studio 17 2022" -A x64 -DDESTDIR="$env:DEPS_DIR" -DDEP_DEBUG=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build . --config Release -- /m
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Save dependencies
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: D:\deps-out
+          key: ${{ steps.deps-cache.outputs.cache-primary-key }}
+
+      - name: Build app and tests
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_PREFIX_PATH="$env:DEPS_DIR\usr\local" `
+            -DCMAKE_CONFIGURATION_TYPES=Release `
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
+            -DSLIC3R_BUILD_LABEL="${{ needs.label.outputs.label }}"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build build --config Release -- /m
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Feature tests (blocking)
+        shell: pwsh
+        run: |
+          & build\tests\libslic3r\Release\libslic3r_tests.exe "$env:FEATURE_TESTS"
+          exit $LASTEXITCODE
+
+      - name: Full test suite (informational)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          & build\tests\libslic3r\Release\libslic3r_tests.exe "~[arc_welder]"
+          exit $LASTEXITCODE
+
+      - name: Package
+        shell: pwsh
+        run: packaging\windows\package.ps1 -BuildDir build -OutDir dist -Label "${{ needs.label.outputs.label }}"
+
+      - name: Smoke test the packaged app
+        shell: pwsh
+        run: |
+          python -c "import struct;s=10.0;v=[(-s,-s,0),(s,-s,0),(s,s,0),(-s,s,0),(-s,-s,20),(s,-s,20),(s,s,20),(-s,s,20)];t=[(0,2,1),(0,3,2),(4,5,6),(4,6,7),(0,1,5),(0,5,4),(2,3,7),(2,7,6),(1,2,6),(1,6,5),(0,4,7),(0,7,3)];open('cube.stl','wb').write(b'\0'*80+struct.pack('<I',len(t))+b''.join(struct.pack('<fff',0,0,0)+b''.join(struct.pack('<fff',*v[i]) for i in x)+struct.pack('<H',0) for x in t))"
+          & "dist\$env:APP_NAME\prusa-slicer-console.exe" --export-gcode cube.stl --output cube.gcode
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Get-Content cube.gcode -TotalCount 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [label, macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LABEL: ${{ needs.label.outputs.label }}
+        run: |
+          sed -e "s/{{APP}}/$APP_NAME/g" -e "s/{{LABEL}}/$LABEL/g" packaging/RELEASE_NOTES.md > notes.md
+          [ -f packaging/FEATURE_NOTES.md ] && cat packaging/FEATURE_NOTES.md >> notes.md
+          # Test / release-candidate tags are published as pre-releases.
+          pre=""; case "$LABEL" in *test*|*rc*|*beta*) pre="--prerelease";; esac
+          gh release create "$GITHUB_REF_NAME" dist/* $pre \
+            --title "$APP_NAME $LABEL" --notes-file notes.md
