@@ -172,8 +172,10 @@ if (SLIC3R_GUI)
         target_link_libraries(PrusaSlicer PRIVATE -ldl)
     endif ()
     if (WIN32)
-        find_library(PSAPI_LIB NAMES Psapi)
-        target_link_libraries(PrusaSlicer PRIVATE ${PSAPI_LIB})
+        # Link the system library by name, like ws2_32 above: the MSVC linker resolves
+        # it from the Windows SDK. find_library() only finds it when the SDK lib dir is
+        # on CMake's search path, which is not the case on GitHub-hosted runners.
+        target_link_libraries(PrusaSlicer PRIVATE psapi)
     endif ()
 endif ()
 
