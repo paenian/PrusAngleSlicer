@@ -13,6 +13,8 @@
 #include <vector>
 #include <random>
 
+#include <boost/filesystem.hpp>
+
 #include "libslic3r/Format/UVTools/SLAFormatMap.hpp"
 #include "libslic3r/Format/UVTools/UVToolsService.hpp"
 #include "uvtools_property.hpp"
@@ -241,7 +243,10 @@ TEST_CASE("UVtools SHA-256 matches known vectors", "[UVtools]")
     // Verify the vendored SHA-256 against a known file content.
     // (empty file -> known SHA-256 of empty input)
     // We write a temp file to exercise sha256_file.
-    const char *path = "/tmp/uvtools_sha_test.bin";
+    // Portable temp location (there is no /tmp on Windows).
+    const std::string tmp = (boost::filesystem::temp_directory_path() /
+                             boost::filesystem::unique_path("uvtools-sha-%%%%-%%%%.bin")).string();
+    const char *path = tmp.c_str();
     {
         FILE *f = std::fopen(path, "wb");
         REQUIRE(f != nullptr);
