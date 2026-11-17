@@ -19,6 +19,11 @@ env:
   # Blocking tests for this branch's feature. The full suite runs too, informational.
   FEATURE_TESTS: '[AngledSlicing]'
   MACOSX_DEPLOYMENT_TARGET: '12.0'
+  # Prebuilt dependencies are kept as assets of this (pre)release. Unlike the Actions
+  # cache, release assets are visible to every run, including tag-triggered ones and
+  # both feature branches (they share the same dependency sources).
+  DEPS_RELEASE: ci-deps
+  GH_REPO: ${{ github.repository }}
 
 permissions:
   contents: read
@@ -48,33 +53,51 @@ jobs:
     needs: label
     runs-on: macos-15            # Apple Silicon (arm64)
     timeout-minutes: 350
+    permissions:
+      contents: write          # store prebuilt dependencies on the ci-deps release
     steps:
       - uses: actions/checkout@v4
 
       - name: Build tools
         run: brew install automake autoconf libtool texinfo gettext m4 || true
 
-      - name: Restore dependencies
-        id: deps-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: deps/build/destdir
-          key: deps-macos-arm64-${{ env.MACOSX_DEPLOYMENT_TARGET }}-${{ hashFiles('deps/**', 'cmake/modules/AddCMakeProject.cmake') }}
+      - name: Get prebuilt dependencies
+        id: deps
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name="deps-macos-arm64-${MACOSX_DEPLOYMENT_TARGET}-${{ hashFiles('deps/**', 'cmake/modules/AddCMakeProject.cmake') }}.tar.gz"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          mkdir -p deps/build
+          if gh release download "$DEPS_RELEASE" --pattern "$name" --dir . ; then
+            tar -xzf "$name" -C deps/build && rm "$name"
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No prebuilt dependencies yet; they will be built."
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build dependencies (slow, first run only)
-        if: steps.deps-cache.outputs.cache-hit != 'true'
+        if: steps.deps.outputs.hit != 'true'
         run: |
-          mkdir -p deps/build && cd deps/build
+          cd deps/build
           cmake .. -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           make -j"$(sysctl -n hw.ncpu)"
 
-      # Saved right away so a later failure does not throw away hours of work.
-      - name: Save dependencies
-        if: steps.deps-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: deps/build/destdir
-          key: ${{ steps.deps-cache.outputs.cache-primary-key }}
+      # Stored right away so later failures do not throw away hours of work.
+      - name: Store prebuilt dependencies
+        if: steps.deps.outputs.hit != 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.deps.outputs.name }}
+        run: |
+          tar -czf "$NAME" -C deps/build destdir
+          ls -l "$NAME"
+          gh release view "$DEPS_RELEASE" >/dev/null 2>&1 || gh release create "$DEPS_RELEASE" --prerelease \
+            --title "CI build cache - not an app download" \
+            --notes "Prebuilt build dependencies used by the release workflow. There is nothing here for users: download the apps from the other releases." || true
+          gh release upload "$DEPS_RELEASE" "$NAME" --clobber
 
       - name: Build app and tests
         run: |
@@ -117,20 +140,35 @@ jobs:
     needs: label
     runs-on: windows-2022
     timeout-minutes: 350
+    permissions:
+      contents: write          # store prebuilt dependencies on the ci-deps release
     env:
       DEPS_DIR: D:\deps-out
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore dependencies
-        id: deps-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: D:\deps-out
-          key: deps-windows-x64-${{ hashFiles('deps/**', 'cmake/modules/AddCMakeProject.cmake') }}
+      - name: Get prebuilt dependencies
+        id: deps
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $name = "deps-windows-x64-${{ hashFiles('deps/**', 'cmake/modules/AddCMakeProject.cmake') }}.tar.gz"
+          "name=$name" >> $env:GITHUB_OUTPUT
+          gh release download $env:DEPS_RELEASE --pattern $name --dir .
+          if ($LASTEXITCODE -eq 0) {
+            tar -xzf $name -C D:\
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            Remove-Item $name
+            "hit=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host 'No prebuilt dependencies yet; they will be built.'
+            "hit=false" >> $env:GITHUB_OUTPUT
+          }
+          exit 0
 
       - name: Build dependencies (slow, first run only)
-        if: steps.deps-cache.outputs.cache-hit != 'true'
+        if: steps.deps.outputs.hit != 'true'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force deps\build | Out-Null
@@ -140,12 +178,24 @@ jobs:
           cmake --build . --config Release -- /m
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-      - name: Save dependencies
-        if: steps.deps-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: D:\deps-out
-          key: ${{ steps.deps-cache.outputs.cache-primary-key }}
+      # Stored right away so later failures do not throw away hours of work.
+      - name: Store prebuilt dependencies
+        if: steps.deps.outputs.hit != 'true'
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.deps.outputs.name }}
+        run: |
+          tar -czf $env:NAME -C D:\ deps-out
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Get-Item $env:NAME | Select-Object Name, Length | Out-String | Write-Host
+          gh release view $env:DEPS_RELEASE *> $null
+          if ($LASTEXITCODE) {
+            gh release create $env:DEPS_RELEASE --prerelease --title "CI build cache - not an app download" --notes "Prebuilt build dependencies used by the release workflow. There is nothing here for users: download the apps from the other releases."
+          }
+          gh release upload $env:DEPS_RELEASE $env:NAME --clobber
+          exit $LASTEXITCODE
 
       - name: Build app and tests
         shell: pwsh
