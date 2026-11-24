@@ -38,8 +38,11 @@ Copy-Item -Recurse (Join-Path $Root 'resources') (Join-Path $Stage 'resources')
 # machines without the "VC++ Redistributable" installed. Harmless if linked statically.
 $vsRoot = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
 $crt = Get-ChildItem -Path (Join-Path $vsRoot 'VC\Redist\MSVC') -Recurse -Directory -Filter 'Microsoft.VC14*.CRT' |
-       Where-Object { $_.FullName -match '\\x64\\' -and $_.FullName -notmatch 'onecore|debug' } | Select-Object -First 1
-if ($crt) { Copy-Item (Join-Path $crt.FullName '*.dll') $Stage }
+       Where-Object { $_.FullName -match '\\x64\\' -and $_.FullName -notmatch 'onecore|debug' } |
+       Sort-Object { [version](($_.FullName -replace '.*\\MSVC\\([0-9.]+)\\.*', '$1') -replace '^[^0-9].*', '0.0') } -Descending |
+       Select-Object -First 1
+# Use the newest redist: an app-local CRT older than the compiler breaks loading PrusaSlicer.dll.
+if ($crt) { Write-Host "VC++ runtime from: $($crt.FullName)"; Copy-Item (Join-Path $crt.FullName '*.dll') $Stage }
 else { Write-Warning 'VC++ runtime DLLs not found; the zip relies on the installed redistributable.' }
 
 # Sanity checks.
